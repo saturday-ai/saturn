@@ -28,7 +28,7 @@ import subprocess
 
 from core import workspace as _ws
 from tools import applescript
-from tools.applescript import AS_RS, AS_US, AppleScriptError, RS
+from tools.applescript import AS_RS, AS_US, RS
 from tools.toolspec import ToolError, register_tool
 
 # The browsers read. When the user names none, the one they were in last is asked first
@@ -109,10 +109,7 @@ def read_browser_tab(browser: str = ""):
             candidates.sort(key=lambda b: order.index(b) if b in order else len(order))
     for app in candidates:
         script = _SAFARI if app == "Safari" else _CHROMIUM.format(app=app)
-        try:
-            out = applescript.run(script, timeout=30.0)
-        except AppleScriptError as exc:
-            raise ToolError(str(exc)) from exc
+        out = applescript.run(script, timeout=30.0)
         parts = out.split(applescript.US, 2)
         if len(parts) == 3:
             break
@@ -139,10 +136,7 @@ tell application "Finder"
   end repeat
   return out
 end tell"""
-    try:
-        out = applescript.run(script, timeout=30.0)
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    out = applescript.run(script, timeout=30.0)
     paths = [p for p in out.split(RS) if p.strip()][:_MAX_SELECTED]
     if not paths:
         return "Nothing is selected in Finder."

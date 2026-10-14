@@ -47,11 +47,11 @@ its bullets as its own by-match section.
 
 from __future__ import annotations
 
-import os
 import re
 from datetime import date, datetime
 from pathlib import Path
 
+import diag
 from config import get_config
 from textutil import visible_text
 
@@ -77,16 +77,6 @@ _MEMO_DIGEST = 5
 
 _DEFAULT_CONTEXT_CAP = 4000   # chars — the same order as SATURN.md's 6000 (nodes/ground.py)
 _DEFAULT_STALE_DAYS = 90      # a by-match fact unused this long is flagged stale in /memory
-
-
-def _atomic_write(path: Path, text: str) -> None:
-    """Write durable memory crash-safely: write a sibling temp file, then os.replace (atomic on
-    Windows + POSIX). A crash mid-write leaves the original intact rather than truncating the
-    user's irreplaceable facts."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
 
 
 _HEADER = (
@@ -333,7 +323,8 @@ def _assign_ids(entries: list[dict], next_id: int) -> int:
 
 def _write(entries: list[dict], next_id: int) -> None:
     next_id = _assign_ids(entries, next_id)
-    _atomic_write(_memory_path(), _render(entries, next_id))
+    # Crash-safe: a kill mid-write must never truncate the user's irreplaceable facts.
+    diag.atomic_write_text(_memory_path(), _render(entries, next_id))
 
 
 # ── writes ────────────────────────────────────────────────────────────────────────────────────

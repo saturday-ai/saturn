@@ -35,8 +35,6 @@ from tools.toolspec import ToolError, register_tool
 # A killed osascript does NOT cancel its Apple event: Mail keeps grinding through it on its main
 # thread, serially, and every retry queues behind it (observed 2026-09-06 — six timed-out queries
 # left Mail unresponsive for minutes). So the timeout is generous, and the tools never retry.
-_QUERY_TIMEOUT = 90.0
-
 _STANDARD = {"inbox": "inbox", "sent": "sent mailbox", "drafts": "drafts mailbox",
              "junk": "junk mailbox", "trash": "trash mailbox", "outbox": "outbox"}
 _MAX = 50
@@ -102,7 +100,7 @@ end tell
 return out
 {ISO_HANDLERS}"""
     try:
-        out = applescript.run(script, timeout=_QUERY_TIMEOUT, app="Mail")
+        out = applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Mail")
     except AppleScriptError as exc:
         raise _error(exc, mailbox) from exc
     rows = _rows(out, mailbox)
@@ -137,7 +135,7 @@ end tell
 return out
 {ISO_HANDLERS}"""
     try:
-        out = applescript.run(script, timeout=_QUERY_TIMEOUT, app="Mail")
+        out = applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Mail")
     except AppleScriptError as exc:
         raise _error(exc, mailbox) from exc
     rows = _rows(out, mailbox)
@@ -168,7 +166,7 @@ tell application "Mail"
 end tell
 {ISO_HANDLERS}"""
     try:
-        out = applescript.run(script, timeout=_QUERY_TIMEOUT, app="Mail")
+        out = applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Mail")
     except AppleScriptError as exc:
         raise _error(exc, mailbox) from exc
     parts = out.split(applescript.US, 5)
@@ -206,10 +204,7 @@ tell application "Mail"
   activate
   return "ok"
 end tell"""
-    try:
-        applescript.run(script, app="Mail")
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    applescript.run(script, app="Mail")
     return {"to": tos, "cc": ccs, "subject": subject,
             "note": "opened in Mail as an unsent draft for you to review and send; nothing was sent"}
 
@@ -276,7 +271,7 @@ tell application "Mail"
 end tell
 {ISO_HANDLERS}{_QUOTED}"""
     try:
-        out = applescript.run(script, timeout=_QUERY_TIMEOUT, app="Mail")
+        out = applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Mail")
     except AppleScriptError as exc:
         raise _error(exc, mailbox) from exc
     parts = out.split(applescript.US)
@@ -355,7 +350,7 @@ tell application "Mail"
 end tell
 return out"""
     try:
-        out = applescript.run(script, timeout=_QUERY_TIMEOUT, app="Mail")
+        out = applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Mail")
     except AppleScriptError as exc:
         raise _error(exc, destination if action == "move" and "whose name" in str(exc) else mailbox) from exc
     changed = [{"id": r[0], "subject": r[1]} for r in records(out) if len(r) == 2]

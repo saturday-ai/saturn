@@ -36,6 +36,7 @@ from pathlib import Path
 import diag
 from config import get_config
 from stores import memory_registry as mr
+from textutil import has_controls
 
 # What `ask` returns on Ctrl-C / Ctrl-D: the caller passes it as ui.ask's on_interrupt, so an
 # interrupt means "stop the interview" — never the empty reply that means "skip this one".
@@ -94,8 +95,6 @@ _OWN_WORDING = re.compile(
     r"|\b(?:never|always|only|cannot|dont|\w+n['’]t"
     r"|(?:do|does|must|should|may|can|will)\s+not)\b",
     re.IGNORECASE)
-# An arrow key or Esc typed into a plain line prompt arrives as its escape sequence.
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _FIRST_NAME = re.compile(r"[^\W\d_][\w'-]{0,39}")
 
 
@@ -199,7 +198,7 @@ def _answer(q: Question, raw, default: "str | None") -> "tuple[list[str], str | 
     if raw == PASTED:
         return [], PASTE_TEXT
     reply = " ".join(str(raw or "").split())
-    if _CONTROL.search(reply):
+    if has_controls(reply):  # an arrow key or Esc typed into a plain line prompt
         return [], KEY_TEXT
     bare = reply.lower().replace("’", "'")
     if bare in _SKIP or bare.rstrip(".!") in _NOTHING:
@@ -259,9 +258,7 @@ def run_interview(*, ask, emit=print, default_name: "str | None" = None,
                                    by="user", src=f"setup:{q.key}")
             saved.append(report)
             emit(f"    {report}")
-            fid = auto_memory.fact_id(report)
-            fact = mr.entry(fid) if fid and report.startswith("Remembered") else None
-            near = auto_memory.similar(fact["text"], fact["layer"], exclude={fid}) if fact else []
+            near = auto_memory.neighbours_of(report)
             if near:
                 emit(f"      {auto_memory.similar_note(near)}")
     emit(f"  saved {len(saved)} fact(s) · see or change them: /memory · ask again: /memory setup")

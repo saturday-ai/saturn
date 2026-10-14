@@ -22,8 +22,8 @@ query ("a", 120 matches) is ~6s in any form.
 from __future__ import annotations
 
 from tools import applescript
-from tools.applescript import (AS_FS, AS_GS, AS_RS, AS_US, FS, GS, ISO_HANDLERS, RS,
-                               AppleScriptError, quote, records)
+from tools.applescript import (AS_FS, AS_GS, AS_RS, AS_US, GS, ISO_HANDLERS, RS, pairs,
+                               quote, records)
 from tools.toolspec import ToolError, register_tool
 
 _MAX = 25
@@ -50,14 +50,8 @@ def _label(raw: str) -> str:
 
 
 def _pairs(field: str) -> list[dict]:
-    out = []
-    for item in field.split(GS):
-        if FS not in item:
-            continue
-        label, value = item.split(FS, 1)
-        if value.strip():
-            out.append({"label": _label(label), "value": value.strip()})
-    return out
+    return [{"label": _label(label), "value": value.strip()}
+            for label, value in pairs(field) if value.strip()]
 
 
 def _birthday(iso: str) -> str:
@@ -175,10 +169,7 @@ return out
 
 def _cards(script: str, q: str) -> "tuple[list[dict], int]":
     """(the cards a card script returned, how many matched before the cut)."""
-    try:
-        out = applescript.run(script, timeout=60.0, app="Contacts")
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    out = applescript.run(script, timeout=60.0, app="Contacts")
     head, _, rest = out.partition(RS)
     total = int(head) if head.strip().isdigit() else 0
     people = []
@@ -206,10 +197,7 @@ tell application "Contacts"
   set AppleScript's text item delimiters to {AS_GS}
   return (name of every person) as text
 end tell"""
-    try:
-        out = applescript.run(script, timeout=60.0, app="Contacts")
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    out = applescript.run(script, timeout=60.0, app="Contacts")
     return [n.strip() for n in out.split(GS) if n.strip()]
 
 

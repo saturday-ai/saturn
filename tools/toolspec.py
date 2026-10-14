@@ -22,7 +22,7 @@ import time
 from dataclasses import dataclass
 from functools import wraps
 
-from langchain.tools import tool as _lc_tool
+from langchain_core.tools import tool as _lc_tool
 
 import diag
 
@@ -93,7 +93,7 @@ def human_approved() -> bool:
 
 
 # Whether the call now executing skipped the gate because the user typed every word of it —
-# set by the tools node from core/auto_memory.qualifies (the same check the approval node
+# set by the tools node from core/auto_memory.why_not (the same check the approval node
 # exempted the call on), read by `remember` to stamp the fact by=user src=said. False anywhere
 # else.
 _USER_STATED: contextvars.ContextVar = contextvars.ContextVar("user_stated", default=False)

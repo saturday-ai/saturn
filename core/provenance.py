@@ -54,7 +54,7 @@ from dataclasses import dataclass
 
 from langchain.messages import AIMessage, ToolMessage
 
-from core.state import PASTED_KEY, is_steer_message, is_turn_start
+from core.state import PASTED_KEY, call_status, is_steer_message, is_turn_start
 from trust import quarantine
 
 
@@ -88,7 +88,7 @@ def of(state) -> Provenance:
         if isinstance(m, AIMessage):
             continue
         if isinstance(m, ToolMessage):
-            status = (getattr(m, "additional_kwargs", None) or {}).get("saturn_status") or "done"
+            status = call_status(m)
             if status != "skipped" and quarantine.is_untrusted(str(m.name or "")):
                 present = True
             if status != "done":

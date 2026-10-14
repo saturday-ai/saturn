@@ -5,7 +5,7 @@ every row — each time it materially changes (the live trace's transparency sur
 the `_plan_line` row format.
 """
 
-import time
+from rich.text import Text
 
 from . import _base
 from ._base import (

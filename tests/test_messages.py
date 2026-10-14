@@ -427,11 +427,13 @@ def test_the_benchmark_approver_never_lets_a_send_or_an_app_write_through():
         {"id": "c4", "name": "update_mail", "args": {}},
         {"id": "c5", "name": "delete_calendar_event", "args": {}},
         {"id": "c6", "name": "draft_mail", "args": {}},
-        {"id": "c7", "name": "run_shell", "args": {}},
+        {"id": "c7", "name": "run_shell", "args": {"command": "wc -l bench_a.txt"}},
+        {"id": "c8", "name": "run_shell", "args": {"command": "rm bench_a.txt"}},
     ]}, prompted)
+    # the shell: read-only commands only (benchmark._read_only_shell, 2026-10-07)
     assert decision == {"approved_ids": ["c1", "c7"]}
     assert prompted == ["write_file", "send_message", "run_shortcut", "update_mail",
-                        "delete_calendar_event", "draft_mail", "run_shell"]
+                        "delete_calendar_event", "draft_mail", "run_shell", "run_shell"]
     assert benchmark.bench_approver({"type": "approval_request", "tool_calls": [
         {"id": "c1", "name": "write_file", "args": {}}]}, prompted) is True
     assert benchmark.bench_approver({"type": "pause"}, prompted) is True

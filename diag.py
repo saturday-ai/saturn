@@ -51,6 +51,24 @@ _LOG_DIR = data_root() / "logging"
 _logger: logging.Logger | None = None
 
 
+def atomic_write_text(path, text: str) -> None:
+    """Write `text` to `path` crash-safely: the parent folder is made, a sibling `<name>.tmp`
+    is written, then renamed over the target (os.replace — atomic on POSIX and Windows), so a
+    kill mid-write leaves the original whole, never truncated; a write that fails takes its
+    temp file with it. THE one home of the idiom for every durable file Saturn owns (memory,
+    the gate policy, a saved skill, the session autosave): a hand-rolled copy drifts on the
+    cleanup. Here because diag is the leaf every one of those writers may import."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def log_dir() -> Path:
     """THE logging directory (clone: repo logging/; wheel: <wheel data home>/logging). Public so
     other log sinks (mcp_client's mcp.log) share one resolution instead of hand-copying it."""

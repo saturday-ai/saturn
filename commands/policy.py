@@ -79,7 +79,8 @@ def risk_handler(ctx, args):
                + ("Grant one prefix at a time with /policy allow instead."
                   if name == "run_shell" else
                   "Grant one shortcut by name with /policy shortcut instead."
-                  if name == "run_shortcut" else "A send always asks."))
+                  if name == "run_shortcut" else
+                  f"{policy.always_asks_what(name).capitalize()} always asks."))
         return
 
     if tier == "reset":

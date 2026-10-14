@@ -11,7 +11,7 @@ import sqlite3
 from datetime import datetime
 from time import perf_counter
 
-from textutil import head_tail, map_strings
+from textutil import capped, head_tail, map_strings
 
 
 # ── read-side helpers (shared by /trace in commands and the tui replay views) ──
@@ -314,8 +314,7 @@ class Tracer:
         # is self-describing: readers render "truncated" / complete=False instead of presenting
         # a mid-sentence cut as the whole answer, and the export's digest commits the marker
         # honestly.
-        if len(text) > _DATA_CAP:
-            text = text[:_DATA_CAP] + f"\n{_RESPONSE_TRUNCATION_MARKER}{_DATA_CAP} chars]"
+        text = capped(text, _DATA_CAP, f"{_RESPONSE_TRUNCATION_MARKER}{_DATA_CAP} chars]")
         # Deliberately EXEMPT from the circuit breaker: end_run is ONE write at turn end (not
         # the per-delta hot path the breaker protects from repeated busy-timeout stalls) and it
         # carries the run's terminal status + answer — a transient lock that tripped the breaker

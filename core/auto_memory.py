@@ -86,7 +86,7 @@ from langchain.messages import ToolMessage
 
 from config import get_config
 from core import provenance
-from core.state import STEER_PREFIX, this_turn
+from core.state import STEER_PREFIX, call_status, this_turn
 
 # Words a restatement may add without the user having typed them: they name the user or
 # carry grammar, never a fact. Polarity and sentiment words are deliberately NOT here, and
@@ -549,8 +549,7 @@ def _not_stated(fact_words: list, extra_words: list, typed: list) -> "str | None
 def _declined_this_turn(state) -> bool:
     """Whether the user said no to a `remember` at the gate earlier in this turn."""
     for m in this_turn(list(state.get("messages") or [])):
-        status = (getattr(m, "additional_kwargs", None) or {}).get("saturn_status")
-        if isinstance(m, ToolMessage) and m.name == "remember" and status == "skipped":
+        if isinstance(m, ToolMessage) and m.name == "remember" and call_status(m) == "skipped":
             return True
     return False
 
@@ -624,10 +623,6 @@ def why_not(call: dict, state, prov=None) -> "str | None":
     return None
 
 
-def qualifies(call: dict, state) -> bool:
-    return why_not(call, state) is None
-
-
 def rule_layer(fact: str, layer: str) -> str:
     """The layer a remembered fact lands in: a standing rule filed under `negative` goes to
     `user` (loaded every turn); everything else stays where the model put it."""
@@ -681,3 +676,15 @@ def similar_note(near) -> str:
 def fact_id(report: str) -> "int | None":
     m = _REPORT_ID_RE.match(str(report or ""))
     return int(m.group(1)) if m else None
+
+
+def neighbours_of(report: str) -> list:
+    """The stored facts the NEW fact a `remember` report announces landed beside (`similar`),
+    for the surface that printed the report to name; [] for a report that saved nothing new
+    (a dedup, a refusal). The one reading of the report every writer shares: the after-answer
+    note, /memory add, the interview."""
+    from stores.memory_registry import entry
+
+    fid = fact_id(report)
+    saved = entry(fid) if fid and str(report or "").startswith("Remembered") else None
+    return similar(saved["text"], saved["layer"], exclude={fid}) if saved else []

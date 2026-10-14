@@ -20,8 +20,7 @@ observation the model must relay, never invent around, stamped error. Nothing he
 from __future__ import annotations
 
 from tools import applescript
-from tools.applescript import (AS_GS, AS_RS, AS_US, GS, ISO_HANDLERS, AppleScriptError, quote,
-                               records)
+from tools.applescript import AS_GS, AS_RS, AS_US, GS, ISO_HANDLERS, quote, records
 from tools.toolspec import ToolError, register_tool
 
 _MAX_MATCHES = 200   # hard cap on records fetched before Python sorts and applies `limit`
@@ -58,10 +57,7 @@ tell application "Notes"
 end tell
 return out
 {ISO_HANDLERS}"""
-    try:
-        rows = records(applescript.run(script, app="Notes"))
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    rows = records(applescript.run(script, app="Notes"))
     notes = [{"id": r[0], "title": r[1], "folder": r[2], "modified": r[3]}
              for r in rows if len(r) == 4 and r[2] != _TRASH]
     notes.sort(key=lambda n: n["modified"], reverse=True)
@@ -118,10 +114,7 @@ tell application "Notes"
     & {AS_US} & my iso(modification date of n) & {AS_US} & (plaintext of n)
 end tell
 {ISO_HANDLERS}"""
-    try:
-        out = applescript.run(script, app="Notes")
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    out = applescript.run(script, app="Notes")
     parts = out.split(applescript.US, 4)
     if len(parts) != 5:
         raise ToolError(f"no note matches {ref!r}")
@@ -143,10 +136,7 @@ tell application "Notes"
   set n to make new note{target} with properties {{name:{quote(title)}, body:{quote(text)}}}
   return id of n
 end tell"""
-    try:
-        note_id = applescript.run(script, app="Notes")
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    note_id = applescript.run(script, app="Notes")
     return {"id": note_id, "title": title, "folder": folder}
 
 
@@ -170,10 +160,7 @@ tell application "Notes"
   set body of n to (body of n) & {quote(_divs(text))}
   return "ok" & {AS_US} & (id of n) & {AS_US} & (name of n)
 end tell"""
-    try:
-        out = applescript.run(script, app="Notes")
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    out = applescript.run(script, app="Notes")
     if out == "locked":
         raise ToolError(f"the note {ref!r} is locked; unlock it in Notes and add the text there")
     if out == "attachments":

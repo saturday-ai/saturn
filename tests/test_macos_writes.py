@@ -7,6 +7,7 @@ Offline like tests/test_macos_apps.py: osascript never runs (conftest's `mac` co
 captures the script and feeds canned output).
 """
 
+import notify
 from datetime import datetime
 
 import pytest
@@ -19,7 +20,7 @@ NOW = datetime(2026, 9, 6, 10, 0, 0).astimezone()
 @pytest.fixture
 def clock(monkeypatch):
     import tools.calendar as cal
-    monkeypatch.setattr(cal, "_now", lambda: NOW)
+    monkeypatch.setattr(notify, "now", lambda: NOW)
     return NOW
 
 

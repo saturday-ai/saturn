@@ -38,6 +38,15 @@ def head_tail(text: str, cap: int, marker: "str | None" = None) -> str:
     return text[:head] + marker.format(dropped=dropped) + text[-tail:]
 
 
+def capped(text, n: int, note: str) -> str:
+    """`text` cut to its first `n` chars with `note` on a line of its own after the cut; text
+    at or under `n` comes back unchanged. The head-only cut for text read from the top (an
+    attachment, an instruction file, a skill body, a stored answer); the note is the caller's,
+    since each surface words what was cut for its own reader."""
+    text = str(text)
+    return text if len(text) <= n else text[:n] + "\n" + note
+
+
 def clip(s, n: int) -> str:
     """One-line preview: collapse all whitespace runs to single spaces, then truncate to `n`."""
     return truncate(" ".join(str(s or "").split()), n)

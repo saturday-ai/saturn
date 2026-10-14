@@ -315,9 +315,7 @@ def _memory(ctx, args):
         # A fact that landed beside a related one: say so, the way the after-answer note does.
         from core import auto_memory
 
-        fid = auto_memory.fact_id(report)
-        saved = mr.entry(fid) if fid and report.startswith("Remembered") else None
-        near = auto_memory.similar(saved["text"], saved["layer"], exclude={fid}) if saved else []
+        near = auto_memory.neighbours_of(report)
         if near:
             _print(f"    {auto_memory.similar_note(near)}")
         return

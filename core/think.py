@@ -28,7 +28,7 @@ from typing import NamedTuple
 from langchain.messages import AIMessage, ToolMessage
 
 from config import get_config
-from core.state import is_steer_message
+from core.state import call_status, is_steer_message
 
 LEVELS = ("fast", "auto", "deep")
 POLICIES = ("act", "recover")  # what auto does · the baseline the benchmark compares it to
@@ -122,10 +122,6 @@ def supported() -> bool:
 # ── the kind of step ─────────────────────────────────────────────────────────────────────────
 
 
-def _status(m) -> str:
-    return (getattr(m, "additional_kwargs", None) or {}).get("saturn_status") or "done"
-
-
 def latest_round(this_turn: list) -> list:
     """The ToolMessages answering the last tool-calling message this turn — the round the
     coming pass reacts to. A steer note the user typed after it is skipped, not a boundary."""
@@ -167,7 +163,7 @@ def step_kind(this_turn: list, capped: bool, mechanical: tuple = ()) -> str:
     if capped:
         return "capped"
     rnd = latest_round(this_turn)
-    if any(_status(m) == "error" and str(m.content) not in mechanical for m in rnd):
+    if any(call_status(m) == "error" and str(m.content) not in mechanical for m in rnd):
         return "recovery"
     if _steered(this_turn):
         return "steered"
@@ -175,7 +171,7 @@ def step_kind(this_turn: list, capped: bool, mechanical: tuple = ()) -> str:
         return "first"
     from tools.registry import is_action
 
-    completed = [m for m in rnd if _status(m) == "done"]
+    completed = [m for m in rnd if call_status(m) == "done"]
     if all(is_action(str(getattr(m, "name", "") or "")) for m in completed):
         return "wrap-up"
     return "information"

@@ -22,8 +22,6 @@ default list (only a shared one), so `create_reminder` names the lists when it c
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import notify
 from tools import applescript
 from tools.applescript import (AS_GS, AS_RS, AS_US, GS, ISO_HANDLERS, MKDATE_HANDLER,
@@ -31,13 +29,8 @@ from tools.applescript import (AS_GS, AS_RS, AS_US, GS, ISO_HANDLERS, MKDATE_HAN
 from tools.applescript import local_iso as _iso
 from tools.toolspec import ToolError, register_tool
 
-_QUERY_TIMEOUT = 90.0
 _ID_PREFIX = "x-apple-reminder://"
 _HANDLERS = ISO_HANDLERS + MKDATE_HANDLER
-
-
-def _now() -> datetime:
-    return datetime.now().astimezone()
 
 
 def _no_list(exc: AppleScriptError, name: str) -> ToolError:
@@ -78,10 +71,10 @@ end tell
 return out
 {ISO_HANDLERS}"""
     try:
-        rows = records(applescript.run(script, timeout=_QUERY_TIMEOUT, app="Reminders"))
+        rows = records(applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Reminders"))
     except AppleScriptError as exc:
         raise _no_list(exc, name) from exc
-    now = _iso(_now())
+    now = _iso(notify.now())
     items = []
     for r in rows:
         if len(r) != 6:
@@ -120,7 +113,7 @@ def create_reminder(title: str, due: str = "", list: str = "", notes: str = ""):
     at = None
     if str(due or "").strip():
         try:
-            at = notify.parse_when(str(due), now=_now())
+            at = notify.parse_when(str(due), now=notify.now())
         except notify.NotifyError as exc:
             raise ToolError(str(exc)) from exc
         props.append(f"due date:{mkdate(at)}")
@@ -143,10 +136,7 @@ tell application "Reminders"
   return "ok" & {AS_US} & (id of r) & {AS_US} & ln
 end tell
 {_HANDLERS}"""
-    try:
-        out = applescript.run(script, timeout=_QUERY_TIMEOUT, app="Reminders")
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    out = applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Reminders")
     parts = out.split(applescript.US)
     if parts[0] == "nolist":
         have = ", ".join(n for n in (parts[1] if len(parts) > 1 else "").split(GS) if n) or "none"
@@ -178,7 +168,7 @@ tell application "Reminders"
   return name of r
 end tell"""
     try:
-        out = applescript.run(script, timeout=_QUERY_TIMEOUT, app="Reminders")
+        out = applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Reminders")
     except AppleScriptError as exc:
         if "-1728" in str(exc) or "-1719" in str(exc):
             raise ToolError(f"no open reminder matches {ref!r} (list_reminders gives the ids)") from exc

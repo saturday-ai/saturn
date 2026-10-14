@@ -29,7 +29,7 @@ from __future__ import annotations
 import os
 import re
 
-from textutil import visible_controls
+from textutil import capped, visible_controls
 
 # A mention is `@` at a word boundary followed by a run of non-space, non-`@` characters — or a
 # double-quoted run (`@"my docs\file.md"`), so a path with spaces (e.g. dragged onto the terminal
@@ -136,9 +136,8 @@ def _read_clamped(path: str) -> str:
                 data = fh.read(_MAX_FILE_CHARS + 1)
     except Exception as exc:  # OSError, or a corrupt document the parser rejects
         return f"[could not read {display(path)}: {exc}]"
-    if len(data) > _MAX_FILE_CHARS:
-        return data[:_MAX_FILE_CHARS] + f"\n… [truncated — {display(path)} exceeds {_MAX_FILE_CHARS} chars]"
-    return data
+    return capped(data, _MAX_FILE_CHARS,
+                  f"… [truncated — {display(path)} exceeds {_MAX_FILE_CHARS} chars]")
 
 
 def expand(text: str, extra_paths: tuple[str, ...] | list[str] = ()) -> tuple[str, list[str]]:
@@ -171,8 +170,8 @@ def expand(text: str, extra_paths: tuple[str, ...] | list[str] = ()) -> tuple[st
         label = display(path)
         parts.append(f"\n#### {label}\n```\n{_read_clamped(path)}\n```")
     if clip is not None:
-        if len(clip) > _MAX_FILE_CHARS:
-            clip = clip[:_MAX_FILE_CHARS] + f"\n… [truncated — the clipboard exceeds {_MAX_FILE_CHARS} chars]"
+        clip = capped(clip, _MAX_FILE_CHARS,
+                      f"… [truncated — the clipboard exceeds {_MAX_FILE_CHARS} chars]")
         parts.append(f"\n#### {CLIPBOARD}\n```\n{clip}\n```")
         paths.append(CLIPBOARD)
     # File and clipboard text is read by the model and may be echoed to the terminal: controls

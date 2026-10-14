@@ -132,10 +132,6 @@ def posture_spans() -> list[tuple[str, str]]:
     best-effort: a facet that can't be derived is OMITTED rather than guessed — this line must
     never claim a posture it didn't read."""
     spans: list[tuple[str, str]] = []
-    try:
-        cfg = get_config()
-    except Exception:
-        return spans
 
     # Gate tier — only above the read_only default. At `destructive` the gate is not "at a
     # tier", it's OPEN — same loud label the status bar uses for as long as that holds.

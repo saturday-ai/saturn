@@ -5,6 +5,7 @@ Contacts (`search_contacts`) and Reminders (`list_reminders` / `create_reminder`
 Offline: osascript never runs (conftest's `mac` controller).
 """
 
+import notify
 from datetime import datetime
 
 import pytest
@@ -18,7 +19,7 @@ FS, GS = "\x1c", "\x1d"
 @pytest.fixture
 def clock(monkeypatch):
     import tools.reminders as rem
-    monkeypatch.setattr(rem, "_now", lambda: NOW)
+    monkeypatch.setattr(notify, "now", lambda: NOW)
     return NOW
 
 

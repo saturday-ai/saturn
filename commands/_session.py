@@ -46,11 +46,10 @@ def write_session_file(path: Path, messages) -> None:
     crash-survival mechanism, so a crash mid-write must never truncate the very file /resume
     needs afterwards. The .tmp sibling never matches the *.json listing glob."""
     import json
-    import os
 
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(_session_payload(messages), indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    import diag
+
+    diag.atomic_write_text(path, json.dumps(_session_payload(messages), indent=2))
 
 
 def _read_session(path: Path):

@@ -649,11 +649,7 @@ def _apply_pick(cfg, kind: str, key: str, rec, *, have: set, session: bool) -> N
             ui.warn(f"embedder {tag} will swap in and out beside tier {rec.size_class} — "
                     "knowledge-base lookups pay a reload")
         models = [tag]
-        # The switch is machine-wide, so "already on it" means EVERY tier binds it: an active
-        # tier that does while another does not is precisely the drift the switch removes.
-        current = bool(tiers) and all(
-            isinstance(t, dict) and str(t.get("embedder") or "") == tag for t in tiers.values()
-        )
+        current = _every_tier_binds(tiers, tag)
         what = f"embedder {tag}"
 
     missing = [m for m in models if not _model_present(m, have)]
@@ -691,12 +687,18 @@ def _apply_other(cfg, other: _Other, rec, *, session: bool) -> None:
     if other.weights_gb and not _other_fits(other, rec):
         ui.warn(f"embedder {other.name} will swap in and out beside tier {rec.size_class} — "
                 "knowledge-base lookups pay a reload")
-    tiers = cfg.get("tiers", {}) or {}
-    if tiers and all(isinstance(t, dict) and str(t.get("embedder") or "") == other.name
-                     for t in tiers.values()):
+    if _every_tier_binds(cfg.get("tiers", {}) or {}, other.name):
         ui.note(f"already on embedder {other.name} — nothing to change")
         return
     _switch_embedder(cfg, other.name, session=session)
+
+
+def _every_tier_binds(tiers: dict, embedder: str) -> bool:
+    """Whether EVERY tier binds `embedder`. The switch is machine-wide, so "already on it"
+    means all of them: an active tier that does while another does not is precisely the drift
+    the switch removes."""
+    return bool(tiers) and all(isinstance(t, dict) and str(t.get("embedder") or "") == embedder
+                               for t in tiers.values())
 
 
 def _models_page(cfg, *, prompt: bool, session: bool = False) -> None:

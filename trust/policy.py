@@ -288,15 +288,10 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    """Crash-safe write: sibling temp file then os.replace (atomic on Windows + POSIX). A kill
-    mid-write truncates the temp file, never the live gate policy — a truncated permissions.json
-    would silently drop user-RAISED risk overrides on the next load. Local copy of the idiom
-    (cf. stores/memory_registry._atomic_write): policy.py is a leaf and must not import stores."""
-    path = _path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    """Crash-safe write (diag.atomic_write_text): a kill mid-write truncates the temp file,
+    never the live gate policy — a truncated permissions.json would silently drop user-RAISED
+    risk overrides on the next load."""
+    diag.atomic_write_text(_path(), json.dumps(data, indent=2))
 
 
 # --- risk-tier overrides (/policy risk … --save) ----------------------------------------

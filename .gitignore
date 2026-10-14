@@ -27,6 +27,7 @@ database/db.sqlite-shm
 # First-run / first-use sentinels — runtime state written on first launch/use; not source.
 database/.setup_done
 database/.gate_seen
+database/.interview_done
 database/.hint_*
 
 # User data that must survive /update (git pull): saved sessions (named /save files + the

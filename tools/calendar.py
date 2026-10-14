@@ -49,12 +49,6 @@ end atclock
 
 _HANDLERS = ISO_HANDLERS + MKDATE_HANDLER + _ATCLOCK_HANDLER
 
-_QUERY_TIMEOUT = 90.0   # the whose-filter is slow on big calendars; one tool call may wait
-
-
-def _now() -> datetime:
-    return datetime.now().astimezone()
-
 
 _mkdate = applescript.mkdate
 _iso = applescript.local_iso
@@ -66,7 +60,7 @@ def _when(text: str, default: datetime, *, whole_day: bool = False) -> datetime:
     text = str(text or "").strip()
     if not text:
         return default
-    return notify.parse_when(text, now=_now(), allow_past=True, whole_day=whole_day)
+    return notify.parse_when(text, now=notify.now(), allow_past=True, whole_day=whole_day)
 
 
 @register_tool("read_only", untrusted=True)
@@ -79,7 +73,7 @@ def list_calendar_events(start: str = "", end: str = "", calendars: str = ""):
     Returns calendar, uid, title, start, end, all_day, location, recurring for each event,
     soonest first."""
     try:
-        today = _now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = notify.now().replace(hour=0, minute=0, second=0, microsecond=0)
         d1 = _when(start, today, whole_day=True)
         d2 = _when(end, d1 + timedelta(days=7), whole_day=True)
     except notify.NotifyError as exc:
@@ -111,10 +105,7 @@ tell application "Calendar"
 end tell
 return out
 {_HANDLERS}"""
-    try:
-        rows = records(applescript.run(script, timeout=_QUERY_TIMEOUT, app="Calendar"))
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    rows = records(applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Calendar"))
     events = [
         {"calendar": r[0], "uid": r[1], "title": r[2], "start": r[3], "end": r[4],
          "all_day": r[5] == "true", "location": r[6], "recurring": bool(r[7])}
@@ -139,7 +130,7 @@ def create_calendar_event(calendar: str, title: str, start: str, end: str = "",
     if not title:
         raise ToolError("an event needs a non-empty title")
     try:
-        d1 = notify.parse_when(str(start or ""), now=_now(), allow_past=True)
+        d1 = notify.parse_when(str(start or ""), now=notify.now(), allow_past=True)
         d2 = _when(end, d1 + timedelta(hours=1))
     except notify.NotifyError as exc:
         raise ToolError(str(exc)) from exc
@@ -158,10 +149,7 @@ tell application "Calendar"
   end tell
 end tell
 {_HANDLERS}"""
-    try:
-        uid = applescript.run(script, app="Calendar")
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    uid = applescript.run(script, app="Calendar")
     return {"uid": uid, "calendar": calendar, "title": title, "start": _iso(d1), "end": _iso(d2)}
 
 
@@ -224,8 +212,8 @@ def update_calendar_event(uid: str, calendar: str, start: str = "", end: str = "
         # A bare clock time is a time on the EVENT's day ("move Friday's review to 3pm"), which
         # only the script knows; parse_when would make it the next 15:00 from now.
         c1, c2 = notify.clock_only(start), notify.clock_only(end)
-        d1 = notify.parse_when(start, now=_now(), allow_past=True) if start and not c1 else None
-        d2 = notify.parse_when(end, now=_now(), allow_past=True) if end and not c2 else None
+        d1 = notify.parse_when(start, now=notify.now(), allow_past=True) if start and not c1 else None
+        d2 = notify.parse_when(end, now=notify.now(), allow_past=True) if end and not c2 else None
     except notify.NotifyError as exc:
         raise ToolError(str(exc)) from exc
     if d1 and d2 and d2 <= d1:
@@ -273,7 +261,7 @@ tell application "Calendar"
 end tell
 {_HANDLERS}"""
     try:
-        out = applescript.run(script, timeout=_QUERY_TIMEOUT, app="Calendar")
+        out = applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Calendar")
     except AppleScriptError as exc:
         raise _event_error(exc, uid, calendar) from exc
     if out == "recurring":
@@ -308,7 +296,7 @@ tell application "Calendar"
 end tell
 {_HANDLERS}"""
     try:
-        out = applescript.run(script, timeout=_QUERY_TIMEOUT, app="Calendar")
+        out = applescript.run(script, timeout=applescript.QUERY_TIMEOUT, app="Calendar")
     except AppleScriptError as exc:
         raise _event_error(exc, uid, calendar) from exc
     if out == "recurring":

@@ -317,7 +317,7 @@ def test_tool_schedules_and_reports_the_resolved_time(mac_backend, monkeypatch):
     import tools.notify as tool_mod
     from tools.registry import tools_by_name
 
-    monkeypatch.setattr(tool_mod, "_now", lambda: NOW)
+    monkeypatch.setattr(notify, "now", lambda: NOW)
     monkeypatch.setattr(notify, "new_id", lambda: "ab12cd34")
     out = tools_by_name["schedule_notification"].invoke(
         {"when": "in 20 minutes", "title": "Stand up", "body": "stretch"}
@@ -332,7 +332,7 @@ def test_tool_refuses_past_time_without_scheduling(mac_backend, monkeypatch):
     import tools.notify as tool_mod
     from tools.registry import tools_by_name
 
-    monkeypatch.setattr(tool_mod, "_now", lambda: NOW)
+    monkeypatch.setattr(notify, "now", lambda: NOW)
     with pytest.raises(ToolError, match="current_time"):
         tools_by_name["schedule_notification"].invoke({"when": "2020-01-01T00:00", "title": "x"})
     assert mac_backend.pending() == []

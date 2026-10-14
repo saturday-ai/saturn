@@ -709,7 +709,6 @@ def test_benchmark_tier_flag_is_in_memory_and_refuses_an_unknown_tier(monkeypatc
 
 
 def test_loop_summary_counts_what_thinking_cost():
-    import benchmark
     deep = think.decide("deep", "first")
     quiet = think.entry(n=2, kind="wrap-up", decision=think.decide("auto", "wrap-up"), prompt_s=0.25)
     results = [
@@ -722,17 +721,17 @@ def test_loop_summary_counts_what_thinking_cost():
             quiet]},
         {"id": "c", "shape": "chat", "tags": [], "iterations": 1, "latency_s": 1.0},  # an errored task
     ]
-    assert benchmark.summarize_loop(results)["thinking"] == {
+    from bench.loop import summarize_thinking
+    assert summarize_thinking(results) == {
         "passes": 4, "thought": 3, "drafts": 1, "empty": 1, "cut": 1, "seconds": 11.0,
         "prompt_seconds": 0.75}
 
 
-def test_loop_report_name_carries_the_tier_and_the_think_mode(monkeypatch, tmp_path):
-    import benchmark
-    monkeypatch.setattr(benchmark, "_log_dir", lambda: tmp_path)
-    one = benchmark.loop_report_path("9b", "decide-draft")
+def test_loop_report_name_carries_the_tier_and_the_think_mode(tmp_path):
+    from bench.loop import report_path
+    one = report_path(tmp_path, "9b", "decide-draft")
     assert one.parent == tmp_path and one.name.startswith("loop_9b_decide-draft_") and one.suffix == ".json"
-    assert benchmark.loop_report_path("4b", "deep", run=2, runs=3).name.endswith("_2.json")
+    assert report_path(tmp_path, "4b", "deep", run=2, runs=3).name.endswith("_2.json")
 
 
 # ── review fixes (2026-10-04) ────────────────────────────────────────────────────────────────
@@ -852,14 +851,16 @@ def test_the_pause_note_says_the_thought_is_being_stopped(monkeypatch):
 def test_a_batch_of_runs_survives_a_file_the_tasks_did_not_expect(monkeypatch, tmp_path):
     """`--runs N`: a model that leaves `bench_summary.txt` behind must not abort run 2 — every
     bench_* file present at exit was made by the run (enter refuses to start over any)."""
-    import benchmark
+    from bench.worlds import fixtures
     from core import workspace
     monkeypatch.setattr(workspace, "reset", lambda: None)
     monkeypatch.setattr(workspace, "root", lambda: tmp_path)
     (tmp_path / "keep.txt").write_text("the user's")
     for _run in range(2):
-        with benchmark._loop_fixtures():
+        with fixtures():
             (tmp_path / "bench_summary.txt").write_text("unexpected")
+            (tmp_path / "bench_notes").mkdir()                       # a folder, not a file
+            (tmp_path / "bench_notes" / "day1.txt").write_text("unexpected")
     assert sorted(p.name for p in tmp_path.iterdir()) == ["keep.txt"]
 
 

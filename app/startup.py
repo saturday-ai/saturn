@@ -49,6 +49,25 @@ def startup_load(interactive: bool = True):
     return build_agent(), warn
 
 
+def problems() -> list[str]:
+    """The startup health report both entry paths print, as lines in one order: a think
+    setting that is not one of its values (it runs as the default and says so), a `toolkits:`
+    line that turned nothing off, a permissions.json that failed to load (the gate ran on
+    defaults inside policy._load — silently, since trust/ never imports tui; registry
+    triggered the load at import, so the report is final by now). One list, so a source can
+    never be reported in one mode and not the other; the REPL adds its interactive-only
+    sources (hooks, skills, MCP) around it."""
+    from core import think
+    from tools import registry
+    from trust import policy
+
+    lines = list(think.problems()) + list(registry.toolkit_problems())
+    gate = policy.load_problem()
+    if gate:
+        lines.append(gate)
+    return lines
+
+
 def embedder_missing() -> "str | None":
     """The active tier's embedder tag when the daemon is reachable and has NOT pulled it; None
     when it is pulled, the daemon is down (the sync's own error says so), or the check fails."""

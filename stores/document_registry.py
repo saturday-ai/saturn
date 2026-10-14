@@ -147,35 +147,32 @@ def _upsert(manifest_path: Path, filename: str, content: str, suffix: str) -> No
         _write_manifest_text(manifest_path, _MANIFEST_HEADER + full_entry)
         return
 
-    marker = f"### {filename}\n"
-
-    if marker in content_text:
-        start_idx = content_text.index(marker)
-        rest = content_text[start_idx + len(marker) :]
-        next_entry = rest.find("\n### ")
-        if next_entry == -1:
-            content_text = content_text[:start_idx] + full_entry
-        else:
-            content_text = (
-                content_text[:start_idx] + full_entry + rest[next_entry + 1 :]
-            )
-    else:
+    around = _split_entry(content_text, filename)
+    if around is None:
         content_text = content_text.rstrip("\n") + "\n\n" + full_entry + "\n"
-
+    else:
+        before, after = around
+        content_text = before + full_entry + after
     _write_manifest_text(manifest_path, content_text)
+
+
+def _split_entry(text: str, filename: str) -> "tuple[str, str] | None":
+    """The manifest text on either side of its `### <filename>` block — (before, after), where
+    `after` starts at the next `### ` heading or is empty — or None when there is no block."""
+    marker = f"### {filename}\n"
+    if marker not in text:
+        return None
+    start = text.index(marker)
+    rest = text[start + len(marker):]
+    next_entry = rest.find("\n### ")
+    return text[:start], ("" if next_entry == -1 else rest[next_entry + 1:])
 
 
 def _remove_entry(manifest_path: Path, filename: str) -> None:
     """Delete the `### <filename>` block from a manifest, if present. Inverse of `_upsert`."""
     text = _read_manifest_text(manifest_path)
-    marker = f"### {filename}\n"
-    if marker not in text:
+    around = _split_entry(text, filename)
+    if around is None:
         return
-    start_idx = text.index(marker)
-    rest = text[start_idx + len(marker) :]
-    next_entry = rest.find("\n### ")
-    if next_entry == -1:
-        text = text[:start_idx].rstrip("\n") + "\n"
-    else:
-        text = text[:start_idx] + rest[next_entry + 1 :]
-    _write_manifest_text(manifest_path, text)
+    before, after = around
+    _write_manifest_text(manifest_path, before + after if after else before.rstrip("\n") + "\n")

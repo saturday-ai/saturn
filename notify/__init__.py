@@ -142,6 +142,12 @@ def clock_only(text: str) -> "tuple[int, int] | None":
     return _hour_minute(m, raw)
 
 
+def now() -> datetime:
+    """The present moment on the user's clock, timezone-aware — what every tool that parses or
+    renders a time measures against (parse_when's `now`)."""
+    return datetime.now().astimezone()
+
+
 def parse_when(text: str, now: datetime | None = None, *, allow_past: bool = False,
                whole_day: bool = False) -> datetime:
     """Resolve a `when` string to an aware local datetime strictly after `now` (or any time at

@@ -23,13 +23,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from textutil import clip, unseen_chars
+from textutil import capped, clip, unseen_chars
 
 SKILLS_DIR = "skills"
 SKILL_FILE = "SKILL.md"
 BODY_CAP = 6000          # the same budget as a SATURN.md (nodes/ground._INSTRUCTIONS_CAP)
 DESCRIPTION_CAP = 200
-MANIFEST_CAP = 1500      # Phase 2: the stable-grounding list of skills the model may load
 DRAFT_CAP = 3000         # steps Saturn itself saves (tools/skills.create_skill): what a person
                          # will read, whole, at the approval prompt — refused beyond, never cut
 
@@ -154,8 +153,7 @@ def _parse(path: Path, scope: str) -> "tuple[Skill | None, str | None]":
     body = body.strip()
     if not body:
         return None, f"{path}: no steps after the frontmatter, skipped"
-    if len(body) > BODY_CAP:
-        body = body[:BODY_CAP] + f"\n… ({path.name} truncated at {BODY_CAP} characters — keep a skill short)"
+    body = capped(body, BODY_CAP, f"… ({path.name} truncated at {BODY_CAP} characters — keep a skill short)")
     problem = None
     declared = str(meta.get("name") or "").strip()
     if declared and declared != name:

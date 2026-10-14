@@ -43,6 +43,7 @@ import uuid
 from types import SimpleNamespace
 
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages.ai import add_ai_message_chunks
 from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp
 from langgraph.types import interrupt
@@ -60,7 +61,7 @@ from core import think as _think
 from core.messages import agent_sys_msg
 from core.pause import get_pause_controller
 from core.provenance import is_typed
-from core.state import (STEER_PREFIX, AgentState, grounding_parts, is_steer_message,
+from core.state import (STEER_PREFIX, AgentState, call_status, grounding_parts,
                         issuing_message)
 from core.state import this_turn as _this_turn, turn_start as _turn_start
 from core.tool_args import coerce_args, schema_hint, tool_for_args
@@ -150,7 +151,7 @@ def _rounds(this_turn: list) -> list:
     for m in this_turn:
         if isinstance(m, ToolMessage) and m.tool_call_id in calls:
             name, args = calls[m.tool_call_id]
-            status = (getattr(m, "additional_kwargs", None) or {}).get("saturn_status") or "done"
+            status = call_status(m)
             out.append((_call_key(name, args), name, args, status, str(m.content)))
     return out
 
@@ -239,12 +240,18 @@ def _calls_of(ai) -> "tuple[list, set]":
     calls = list(getattr(ai, "tool_calls", None) or [])
     malformed: set = set()
     for tc in getattr(ai, "invalid_tool_calls", None) or []:
-        cid = tc.get("id") or f"call_{uuid.uuid4().hex[:12]}"
         # `or ""`: broken JSON can leave the name unreadable, and the AIMessage the node
         # rebuilds from these dicts refuses a None name — hygiene then says "malformed".
-        calls.append({"name": tc.get("name") or "", "args": {}, "id": cid, "type": "tool_call"})
-        malformed.add(cid)
+        call = _call_dict(tc.get("name") or "", {}, tc.get("id"))
+        calls.append(call)
+        malformed.add(call["id"])
     return calls, malformed
+
+
+def _call_dict(name, args, call_id=None) -> dict:
+    """A tool call as the node records it, with an id minted for one the model left without."""
+    return {"name": name, "args": args, "id": call_id or f"call_{uuid.uuid4().hex[:12]}",
+            "type": "tool_call"}
 
 
 # ── the call ──────────────────────────────────────────────────────────────────────────────────
@@ -290,11 +297,11 @@ def _generate(llm_input: list, *, tools: bool, think: bool = False) -> AIMessage
     thought = {"seconds": 0.0, "tokens": 0, "text": "", "cut": None}
     began = None    # when the first reasoning chunk arrived
     over = False    # the thought ended: the answer or a call began
-    full = None
+    seen: list = []
     chunks = llm_stream(runnable, llm_input, tag=model_tag(), **kwargs)
     try:
         for chunk in chunks:
-            full = chunk if full is None else full + chunk
+            seen.append(chunk)
             reasoning = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content")
             answering = bool(chunk.content) or bool(getattr(chunk, "tool_call_chunks", None))
             if reasoning and not answering and not over:
@@ -319,14 +326,16 @@ def _generate(llm_input: list, *, tools: bool, think: bool = False) -> AIMessage
         close = getattr(chunks, "close", None)
         if close:
             close()  # a cut thought must stop generating, not run on unread
+    # Merged once, after the stream: `chunk + chunk` re-parses the accumulated tool-call
+    # arguments on every addition, quadratic on a long write_file payload (0.65 s of CPU for
+    # an 11 KB file streamed as 3,700 chunks; 5 ms merged once).
+    full = (None if not seen else seen[0] if len(seen) == 1
+            else add_ai_message_chunks(seen[0], *seen[1:]))
     if full is None:  # a model that streamed nothing — blocking fallback
         full = generate(runnable, llm_input, tag=model_tag(), **kwargs)
     content = full.content if isinstance(full.content, str) else str(full.content)
-    calls = []
-    for tc in getattr(full, "tool_calls", None) or []:
-        calls.append({"name": tc.get("name"), "args": tc.get("args"),
-                      "id": tc.get("id") or f"call_{uuid.uuid4().hex[:12]}",
-                      "type": "tool_call"})
+    calls = [_call_dict(tc.get("name"), tc.get("args"), tc.get("id"))
+             for tc in getattr(full, "tool_calls", None) or []]
     kw = {"response_metadata": dict(getattr(full, "response_metadata", None) or {})}
     if began is not None:
         thought["text"] = str((getattr(full, "additional_kwargs", None) or {})
@@ -673,8 +682,8 @@ def incidents(this_turn: list) -> list:
             why = _BUDGET_WORDING
         elif status not in _INCIDENT_STATUSES or last[key] not in _INCIDENT_STATUSES:
             continue
-        elif _off_toolkit(name, obs):
-            why = _TOOLKIT_OFF_WORDING.format(key=_off_toolkit(name, obs))
+        elif (off := _off_toolkit(name, obs)):
+            why = _TOOLKIT_OFF_WORDING.format(key=off)
         else:
             why = _INCIDENT_WORDING.get(status) or f"failed: {clip(' '.join(obs.split()), _INCIDENT_CAP)}"
         seen.add(key)
@@ -799,7 +808,10 @@ def agent_node(state: AgentState):
 
     # 5. hygiene
     rounds = _rounds(this_turn)
-    prov = provenance({**state, "messages": messages + new})
+    # Read only for the handle and chat holds (it joins every observation of the turn).
+    prov = (provenance({**state, "messages": messages + new})
+            if any(c.get("name") in quarantine.HANDLE_ARGS or c.get("name") in quarantine.CHAT_ARGS
+                   for c in calls) else None)
     group_missing = _group_missing(this_turn, rounds)
     kept, replies = [], []
     for call in calls:

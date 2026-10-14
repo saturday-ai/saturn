@@ -16,14 +16,8 @@ stamped error.
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import notify
 from tools.toolspec import ToolError, register_tool
-
-
-def _now() -> datetime:
-    return datetime.now().astimezone()
 
 
 @register_tool("side_effecting", toolkit="notifications")
@@ -38,7 +32,7 @@ def schedule_notification(when: str, title: str, body: str = ""):
     if not title:
         raise ToolError("a notification needs a non-empty title")
     try:
-        at = notify.parse_when(str(when or ""), now=_now())
+        at = notify.parse_when(str(when or ""), now=notify.now())
         n = notify.Notification(id=notify.new_id(), when=at, title=title, body=str(body or "").strip())
         notify.backend().schedule(n)
     except notify.NotifyError as exc:

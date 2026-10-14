@@ -14,7 +14,6 @@ Leaf module: imports nothing project-side, so every layer may use it.
 
 from __future__ import annotations
 
-import re
 from typing import Optional
 
 # canonical arg -> the names models actually emit for it, per REQUIRED argument. A tool listed

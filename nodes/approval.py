@@ -22,7 +22,7 @@ from langgraph.types import interrupt, Command
 import diag
 from trust import policy
 from trust import quarantine
-from tools.registry import DECLARED_RISK, risk_of
+from tools.registry import is_gated, risk_of
 from core import auto_memory
 from core import provenance as _provenance
 from core.state import AgentState, current_step, issuing_message
@@ -50,8 +50,7 @@ def _can_act(name: str) -> bool:
     """Whether a call can send something out or change something — what a quarantine escalation
     exists to put in front of the human. The DECLARED tier counts as well as the live one: a
     tier the user relaxed must not take the tool out from under the escalation."""
-    return (quarantine.is_outbound(name) or risk_of(name) != "read_only"
-            or DECLARED_RISK.get(name, "destructive") != "read_only")
+    return quarantine.is_outbound(name) or is_gated(name)
 
 
 def _three(p) -> "tuple[str, str, bool]":

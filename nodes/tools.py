@@ -128,8 +128,7 @@ def _auto_memory_marks(observation: str, replacing: "dict | None") -> dict:
             marks["auto_memory_replaced"] = replacing
         if not new:
             return marks
-        saved = entry(fid) if fid else None
-        near = auto_memory.similar(saved["text"], saved["layer"], exclude={fid}) if saved else []
+        near = auto_memory.neighbours_of(observation)
         # A sensitive neighbour's text stays out of the event: events go to the trace and
         # to exports.
         near = [{"id": e["id"], "text": e["text"]} for e in near if not e.get("sens")]

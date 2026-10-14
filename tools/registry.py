@@ -221,9 +221,16 @@ def refresh_trust_classifications() -> None:
     from trust import quarantine
 
     quarantine.set_untrusted_tools(_UNTRUSTED)
-    gated = {n for n, t in DECLARED_RISK.items() if t != "read_only"}
-    gated |= {n for n, t in TOOL_RISK.items() if t != "read_only"}
-    quarantine.set_gated_tools(gated)
+    quarantine.set_gated_tools({n for n in DECLARED_RISK.keys() | TOOL_RISK.keys() if is_gated(n)})
+
+
+def is_gated(name: str) -> bool:
+    """Whether a call to `name` can change or send something — its DECLARED tier or its live
+    one is above read_only (an unknown name is gated: unknown risk fails closed). Monotone
+    toward the gate: a tier the user relaxed does not take the tool out from under the checks
+    that ask this (the quarantine escalation, the injection scan)."""
+    return (DECLARED_RISK.get(name, "destructive") != "read_only"
+            or TOOL_RISK.get(name, "destructive") != "read_only")
 
 
 refresh_trust_classifications()

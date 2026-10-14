@@ -16,10 +16,10 @@ person's yes to that exact text.
 
 from __future__ import annotations
 
-import os
 from datetime import date
 from pathlib import Path
 
+import diag
 from core import hooks, skills
 from stores.snapshots import snapshot_file
 from tools.toolspec import ToolError, human_approved, register_tool
@@ -64,14 +64,10 @@ def create_skill(name: str, description: str, steps: str, replace: bool = False)
     if refusal:
         raise ToolError(refusal)
     existed = target.exists()
-    tmp = target.with_name(target.name + ".tmp")
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
         snapshot_file(target)      # /undo takes a save back: a new skill removed, an old one restored
-        tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, target)    # atomic: a reader never sees half a skill
+        diag.atomic_write_text(target, text)   # atomic: a reader never sees half a skill
     except OSError as exc:
-        tmp.unlink(missing_ok=True)
         raise ToolError(f"could not save /{name}: {exc}; nothing was changed.") from exc
     hooks.run("after-write", file=str(target), tool="create_skill")
     return (f"{'Replaced' if existed else 'Saved'} the skill /{name} ({target}). "

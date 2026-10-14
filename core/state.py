@@ -94,6 +94,14 @@ def issuing_message(messages) -> "tuple[Any, set]":
     return None, answered
 
 
+def call_status(m) -> str:
+    """The `saturn_status` stamp a ToolMessage carries — done (it ran and completed), error,
+    skipped (declined at the gate), blocked — "done" for a message without one. THE reader of
+    the stamp every surface keys on (the think decision, provenance, the incidents note).
+    Compare equality; never match the observation's text."""
+    return (getattr(m, "additional_kwargs", None) or {}).get("saturn_status") or "done"
+
+
 def current_step(plan: List[dict]) -> Optional[dict]:
     """The first step whose `result` is None (not done yet); None when the plan is complete or
     empty. The approval gate's payload and its gate_events `step` label read this."""
@@ -164,7 +172,7 @@ class AgentState(TypedDict):
     outside_seen: bool | str
 
     # The ids of this batch's `remember` calls the approval node let through because the user
-    # typed every word of them (core/auto_memory.qualifies). Written by the approval node on
+    # typed every word of them (core/auto_memory.why_not). Written by the approval node on
     # every route to `tools`, read by the tools node — which must take the gate's word, not
     # work it out again from a state the gate's own decline messages have changed.
     user_stated: List[str]

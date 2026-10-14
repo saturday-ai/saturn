@@ -27,6 +27,7 @@ from pathlib import Path
 import diag
 
 from core.state import AgentState
+from textutil import capped
 from stores.memory_registry import memory_context_split, mark_used
 from stores.document_registry import read_documents_manifest
 
@@ -54,9 +55,7 @@ def _read_capped(path: Path) -> str:
     # errors="replace": a hand-edited file with a stray non-UTF-8 byte must not fail every turn
     # at the first node.
     text = path.read_text(encoding="utf-8", errors="replace").strip()
-    if len(text) > _INSTRUCTIONS_CAP:
-        text = text[:_INSTRUCTIONS_CAP] + f"\n… ({path.name} truncated — keep it concise)"
-    return text
+    return capped(text, _INSTRUCTIONS_CAP, f"… ({path.name} truncated — keep it concise)")
 
 
 def _read_instructions() -> str:

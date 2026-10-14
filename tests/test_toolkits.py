@@ -740,12 +740,6 @@ def test_mcp_reload_drops_a_gone_servers_tools_and_its_toolkit(mcp_server, monke
 # ── the benchmark's --off (benchmark.py) ─────────────────────────────────────────────────────
 
 
-def _loop_task(task_id):
-    import benchmark
-
-    return next(t for t in benchmark.LOOP_TASKS if t["id"] == task_id)
-
-
 def test_bench_off_turns_toolkits_off_in_memory_only(rebinds, config_file):
     import benchmark
     from tools import registry
@@ -766,37 +760,40 @@ def test_bench_off_refuses_what_tools_would(rebinds, spec):
 
 
 def test_a_loop_task_that_needs_an_off_toolkit_is_skipped(rebinds):
-    import benchmark
+    from bench.loop import skipped_for
+    from bench.tasks import TASKS, task
     from tools import registry
 
-    assert all(benchmark.task_off(t) is None for t in benchmark.LOOP_TASKS)   # nothing off
+    assert all(skipped_for(t) is None for t in TASKS)                       # nothing off
 
     registry.set_toolkits(["messages", "files"], False)
-    assert benchmark.task_off(_loop_task("msg_one_person")) == "messages"     # a send is expected
-    assert benchmark.task_off(_loop_task("file_read")) == "files"             # a required tool
-    assert benchmark.task_off(_loop_task("calc_arith")) is None
-    assert benchmark.task_off(_loop_task("chat_greeting")) is None
+    assert skipped_for(task("msg_one_person")) == "messages"                # its own toolkit
+    assert skipped_for(task("file_read")) == "files"
+    assert skipped_for(task("calc_split")) is None
+    assert skipped_for(task("chat_rewrite")) is None
 
 
 def test_a_task_that_must_not_use_the_tool_still_runs(rebinds):
-    import benchmark
+    from bench.loop import skipped_for
+    from bench.tasks import task
     from tools import registry
 
     registry.set_toolkits(["skills"], False)
-    assert benchmark.task_off(_loop_task("skill_create")) == "skills"
-    assert benchmark.task_off(_loop_task("skill_chat")) is None       # expects NO skill saved
+    assert skipped_for(task("skill_create")) == "skills"
+    # skill_chat is in the skills toolkit too: a question about routines needs no tool, but
+    # with skills off it measures nothing about the skills toolkit
+    assert skipped_for(task("skill_chat")) == "skills"
 
 
-def test_skipped_tasks_are_counted_apart():
-    import benchmark
+def test_a_guard_tasks_own_forced_setup_never_skips_it(rebinds):
+    """guard_toolkit_off turns calendar off itself; the user turning calendar off changes
+    nothing about whether it runs."""
+    from bench.loop import skipped_for
+    from bench.tasks import task
+    from tools import registry
 
-    ran = {"id": "a", "shape": "chat", "tags": [], "iterations": 1, "latency_s": 1.0}
-    failed = {"id": "b", "shape": "chat", "tags": ["stub"], "iterations": 1, "latency_s": 1.0}
-    skipped = {"id": "c", "shape": "messaging", "tags": [], "skipped": "messages"}
-    s = benchmark.summarize_loop([ran, failed, skipped])
-
-    assert (s["total"], s["passed"], s["failed"]) == (2, 1, ["b"])
-    assert s["skipped"] == ["c"] and "messaging" not in s["by_shape"]
+    registry.set_toolkits(["calendar"], False)
+    assert skipped_for(task("guard_toolkit_off")) is None
 
 
 # ── the other ways the config changes (/config) ──────────────────────────────────────────────

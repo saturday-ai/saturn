@@ -38,7 +38,9 @@ python -m pytest tests/test_policy.py -q -k prefix       # one test by name
 
 # trust benchmark — needs a running Ollama with the active tier pulled
 python benchmark.py [--strict]       # reports to logging/benchmarks/trust_<ts>.json
-python benchmark.py --loop           # the loop benchmark: daily requests graded on passes/tool choice/phantoms → loop_<ts>.json
+python benchmark.py --loop           # the loop benchmark (bench/): each task graded safety / correctness / efficiency → loop_<tier>_<think>_<ts>.json
+python benchmark.py --loop --toolkit files   # one toolkit's tasks (`harness` = the agent's forced guard tasks)
+python benchmark.py --compare A.json B.json  # the tasks whose grade changed between two loop reports
 
 SATURN_DEBUG=1 python agent.py       # echo logging/diag.log lines to stderr
 ```
@@ -227,7 +229,7 @@ read by auto-learn and the memory review; the URL hold and the skill note read
 `provenance.entered` (in the conversation now, or seen entering it earlier — the answer that
 restated a page outlives the page), which a restored session's blank does not arm. The approval
 node asks `why_not` once per `remember`, with one reading of the conversation, and hands the
-ids to the tools node (`state["user_stated"]`) — never recompute `qualifies` after the gate. A standing rule ("never…") lands in `user`, which loads every turn
+ids to the tools node (`state["user_stated"]`) — never recompute `why_not` after the gate. A standing rule ("never…") lands in `user`, which loads every turn
 (`auto_memory.rule_layer`). `memory_registry.secret_problem` refuses the recognisable shapes of
 a credential in the two writers of fact text (`add_memory`, `edit_memory` raise
 `SecretRefused`), so a new write path inherits it. A write that lands beside a
@@ -348,8 +350,13 @@ event per recipient); `send_mail` is still deferred. `read_messages` reads `chat
 Access. `tools/shortcuts.py` runs the user's Shortcuts through the `shortcuts` CLI (two tools, not one per
 shortcut: the bound schemas are the cached prefix). There is no clipboard tool on purpose — the user types
 `@clipboard` (`core/mentions.py`) or `/copy`. Probe findings and what is still unverified:
-`docs/superpowers/specs/2026-09-06-macos-apps.md`. `benchmark.py`'s approver (`bench_approver`) declines
-every gated call into these modules: a benchmark run must never act on the user's real world.
+`docs/superpowers/specs/2026-09-06-macos-apps.md`. `benchmark.py`'s approver (`bench_approver`) says
+yes only to a gated call in the `files`, `knowledge` or `core` toolkits (`_WORKSPACE_TOOLKITS`, an
+allowlist so a new app toolkit fails closed) and to a `run_shell` that only reads inside the
+workspace (`_read_only_shell`); every other gated call — the app toolkits, `schedule_notification`,
+an MCP tool — is declined: a benchmark run must never act on the user's real world. The
+loop benchmark runs inside `bench/worlds.apps_world`, where every app read tool, the knowledge
+base and the web answer from `bench/planted.py`.
 
 The knowledge base (the RAG corpus, `stores/rag.py`) has two agent writers in
 `tools/knowledge.py`, both in `policy.ALWAYS_ASKS` and both refusing unless `human_approved()`:
@@ -411,6 +418,12 @@ off the status bar's GPU / memory reader (`tui.ui.statusbar._read_usage` → `co
 ioreg + vm_stat). `tests/` and `benchmark.py` import
 compatibility names from `agent` (`from agent import build_agent, run_turn, …`); new code should import
 from `app/` directly.
+
+`tests/test_bench.py` is the loop benchmark's own check, offline: every task in `bench/tasks.py`
+is well formed (one of the five expectations in `bench/expect.py`, a `guards` line, one
+toolkit), passable — its `ideal` calls run through the real tools in the planted files and
+messaging world reach the expected value, file or gate target — and graded right on runs that
+must fail. A new task needs all three; the suite is capped on purpose (12 per toolkit, 60 in all).
 
 ### Docs
 

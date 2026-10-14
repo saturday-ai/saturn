@@ -9,7 +9,6 @@ autosave, and auto-compaction. One call — `run_repl()` — owns the whole sess
 import os
 import sys
 
-from datetime import datetime
 from pathlib import Path
 
 import commands
@@ -18,7 +17,7 @@ from app import bang
 from app.graph import DB_PATH
 from app.session import (_fresh_turn, _initial_state, _maybe_autocompact, skill_completions,
                          skill_for_line, think_for_line)
-from app.startup import startup_load, start_warm_up, _warn_flagged_attachments
+from app.startup import startup_load, start_warm_up, _warn_flagged_attachments, problems as startup_problems
 from core import prime
 from app.turn import close_run, open_run, run_turn, _make_on_update, _trace_warning
 from config import get_config
@@ -149,13 +148,6 @@ def run_repl() -> None:
         ui.warn(f"skill {problem}")
     for name in sorted(n for n in _skills.discover() if commands.resolves(n)):
         ui.warn(f"skill /{name}: the built-in /{name} wins, so it never runs — rename its file")
-    # A think setting that is not one of its values runs as its default — and says so, rather
-    # than silently meaning something else (a bare YAML `on` used to run as adaptive).
-    from core import think as _think
-
-    for problem in _think.problems():
-        ui.warn(problem)
-
     # Startup header — tier/model / tool count / corpus size, like a tool's first line.
     from core.llms import model_id, check_models
     from tools.registry import tool as _tools
@@ -204,20 +196,10 @@ def run_repl() -> None:
 
     for problem in mcp_client.problems():
         ui.warn(problem)
-    # A `toolkits:` line that names no toolkit or is not true/false — it turned nothing off.
-    from tools import registry as _registry
-
-    for problem in _registry.toolkit_problems():
+    # The rest of the startup health report (the think setting, the `toolkits:` lines, a
+    # permissions.json that failed to load), in the one order headless prints it too.
+    for problem in startup_problems():
         ui.warn(problem)
-    # A permissions.json that failed to load degraded the gate to defaults inside policy._load —
-    # silently, since trust/ never imports tui. Surface it with the rest of the startup health
-    # report (the mcp_client.problems() pattern); registry already triggered the load at import,
-    # so the report is final by now.
-    from trust import policy as _policy
-
-    _policy_problem = _policy.load_problem()
-    if _policy_problem:
-        ui.warn(_policy_problem)
 
     # Carries the live session into slash-command handlers. `make_initial_state` lets
     # /clear rebuild state without commands.py importing back into agent.py.

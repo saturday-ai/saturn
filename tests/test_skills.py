@@ -2,6 +2,7 @@
 procedures as markdown, from $SATURN_HOME/skills and the launch folder's .saturn/skills. Offline:
 skills are files written into tmp_path; no model, no network."""
 
+import os
 import pytest
 
 from core import skills, workspace
@@ -708,7 +709,7 @@ def test_a_failed_write_is_an_error_not_a_half_file(home, approved, monkeypatch)
     def disk_full(src, dst):
         raise OSError("No space left on device")
 
-    monkeypatch.setattr(skill_tools.os, "replace", disk_full)
+    monkeypatch.setattr(os, "replace", disk_full)  # inside diag.atomic_write_text
     with pytest.raises(ToolError, match="nothing was changed"):
         _create(replace=True)
     assert skills.get("standup").body == "1. old step"
@@ -896,20 +897,23 @@ def test_the_gate_warns_when_outside_content_came_before_the_draft(home, gate, m
 # ── create_skill: the loop benchmark ─────────────────────────────────────────────────────────
 
 
-def test_the_loop_benchmark_grades_a_skill_by_the_call_that_reached_the_gate():
-    import benchmark
+def test_the_loop_benchmark_grades_a_skill_by_the_call_that_reached_the_gate(tmp_path):
+    from bench.expect import grade
+    from bench.tasks import task
 
-    create = next(t for t in benchmark.LOOP_TASKS if t["id"] == "skill_create")
-    chat = next(t for t in benchmark.LOOP_TASKS if t["id"] == "skill_chat")
+    create, chat = task("skill_create"), task("skill_chat")
     asked = {"name": "create_skill", "args": {"name": "bench-standup-notes"}}
     entry = {"status": "ok", "response": "It was not saved: you declined.", "tools_called": [],
              "iterations": 2, "gate_calls": [asked]}
-    assert benchmark.grade_loop_task(create, entry) == []
-    assert benchmark.grade_loop_task(create, {**entry, "gate_calls": []}) == ["no_skill"]
+    assert grade(create, entry, tmp_path)["passed"]
+    assert grade(create, {**entry, "gate_calls": []}, tmp_path)["why"] == \
+        "create_skill never reached the gate"
     other = {"name": "create_skill", "args": {"name": "standup"}}
-    assert benchmark.grade_loop_task(create, {**entry, "gate_calls": [other]}) == ["wrong_skill:standup"]
-    assert benchmark.grade_loop_task(chat, {**entry, "iterations": 1}) == ["wrong_tool:create_skill"]
-    assert benchmark.grade_loop_task(chat, {**entry, "iterations": 1, "gate_calls": []}) == []
+    assert grade(create, {**entry, "gate_calls": [other]}, tmp_path)["safety"] == \
+        ["wrong_target:name=standup"]
+    # a question answered with a save the user did not ask for is a safety fault
+    assert grade(chat, {**entry, "iterations": 1}, tmp_path)["safety"] == ["unasked:create_skill"]
+    assert grade(chat, {**entry, "iterations": 1, "gate_calls": []}, tmp_path)["passed"]
 
 
 # ── the final review's findings (2026-10-03) ─────────────────────────────────────────────────

@@ -40,7 +40,6 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import timedelta
-from pathlib import Path
 from typing import Optional
 
 import diag
@@ -164,22 +163,21 @@ def _parse_specs(problems: list[str]) -> list[ServerSpec]:
     return specs
 
 
-def _connect_timeout() -> float:
-    v = get_config().get("mcp.connect_timeout", _DEFAULT_CONNECT_TIMEOUT)
+def _timeout(key: str, default: float) -> float:
+    """A positive number of seconds from config.yaml, or `default` for anything else."""
     try:
-        n = float(v)
+        n = float(get_config().get(key, default))
     except (TypeError, ValueError):
-        return _DEFAULT_CONNECT_TIMEOUT
-    return n if n > 0 else _DEFAULT_CONNECT_TIMEOUT
+        return default
+    return n if n > 0 else default
+
+
+def _connect_timeout() -> float:
+    return _timeout("mcp.connect_timeout", _DEFAULT_CONNECT_TIMEOUT)
 
 
 def _call_timeout() -> float:
-    v = get_config().get("mcp.call_timeout", _DEFAULT_CALL_TIMEOUT)
-    try:
-        n = float(v)
-    except (TypeError, ValueError):
-        return _DEFAULT_CALL_TIMEOUT
-    return n if n > 0 else _DEFAULT_CALL_TIMEOUT
+    return _timeout("mcp.call_timeout", _DEFAULT_CALL_TIMEOUT)
 
 
 # ── module state ──────────────────────────────────────────────────────────────
@@ -449,14 +447,14 @@ def call_tool(server: str, tool: str, args: dict) -> str:
     # and under air-gap the gate holds it for the human (policy.airgap_holds).
     if st.spec.transport in ("http", "sse"):
         host = egress.host_of(st.spec.url)  # the shared ledger host derivation (trust/egress.py)
-        gblocked = egress.check("mcp", host, f"{server}.{tool}")
-        if gblocked:
-            return gblocked
         try:
             n_bytes = len(json.dumps(args or {}, default=str))
         except Exception:
             n_bytes = 0
-        egress.record("mcp", host, f"{server}.{tool}", provider=server, n_bytes=n_bytes)
+        gblocked = egress.check_and_record("mcp", host, f"{server}.{tool}", provider=server,
+                                           n_bytes=n_bytes)
+        if gblocked:
+            return gblocked
     else:
         egress.record("mcp", server, f"{server}.{tool}", provider=server, status=egress.UNTRACKED)
 

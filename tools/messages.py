@@ -49,7 +49,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from tools import applescript
-from tools.applescript import AS_FS, AS_GS, AS_RS, AS_US, FS, GS, AppleScriptError, quote, records
+from tools.applescript import AS_FS, AS_GS, AS_RS, AS_US, AppleScriptError, pairs, quote, records
 from tools.toolspec import ToolError, register_tool
 from trust import egress
 from trust.quarantine import CHAT_REF as _REF, same_handle
@@ -161,13 +161,8 @@ def _parse_groups(output: str) -> list:
     for rec in records(output):
         if len(rec) < 3 or ";+;" not in rec[0]:
             continue
-        people = []
-        for item in rec[2].split(GS):
-            if FS not in item:
-                continue
-            handle, name = (part.strip() for part in item.split(FS, 1))
-            if handle:
-                people.append({"handle": handle, "name": name or handle})
+        people = [{"handle": handle.strip(), "name": name.strip() or handle.strip()}
+                  for handle, name in pairs(rec[2]) if handle.strip()]
         rows.append({"guid": rec[0].strip(), "name": rec[1].strip(), "people": people})
     for row, ref in zip(rows, _assign_refs([r["guid"] for r in rows])):
         row["ref"] = ref
@@ -176,10 +171,7 @@ def _parse_groups(output: str) -> list:
 
 def _groups() -> list:
     """Every group chat the Messages app knows, with its people. The seam tests replace."""
-    try:
-        return _parse_groups(applescript.run(_GROUPS_SCRIPT, app="Messages"))
-    except AppleScriptError as exc:
-        raise ToolError(str(exc)) from exc
+    return _parse_groups(applescript.run(_GROUPS_SCRIPT, app="Messages"))
 
 
 def _group(ref: str) -> "dict | None":
@@ -362,10 +354,10 @@ def send_message(text: str, to: str = "", chat: str = ""):
         return _send_to_group(args["chat"], text)
     handle = _handle(args["to"])                      # route_target refused anything else
     applescript.mac_only()
-    blocked = egress.check("message", handle, text)
+    blocked = egress.check_and_record("message", handle, text, provider="imessage",
+                                      n_bytes=len(text.encode("utf-8")))
     if blocked:
         raise ToolError(blocked)
-    egress.record("message", handle, text, provider="imessage", n_bytes=len(text.encode("utf-8")))
     _send("set svc to first account whose service type is iMessage\n"
           f"  send {quote(text)} to participant {quote(handle)} of svc")
     return {"to": handle, "text": text,

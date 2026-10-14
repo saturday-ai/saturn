@@ -88,10 +88,15 @@ def local_iso(dt) -> str:
     return dt.astimezone().isoformat(timespec="minutes")[:16]
 
 
-class AppleScriptError(Exception):
+class AppleScriptError(ToolError):
     """A script could not run or failed. The message is written for the model/user to read
-    verbatim (it always starts with a lowercase clause; the tool re-raises it as ToolError and the tools
-    node prefixes 'Error: ')."""
+    verbatim (it always starts with a lowercase clause; the tools node prefixes 'Error: '). A
+    ToolError, so a tool that has no friendlier wording lets it propagate as its own failure."""
+
+
+# The osascript timeout for a query over a whole app (a two-week Calendar window, a big
+# mailbox, every reminder list): slow but bounded, and one tool call may wait that long.
+QUERY_TIMEOUT = 90.0
 
 
 def _platform() -> str:
@@ -155,6 +160,12 @@ def quote(text) -> str:
     """An AppleScript double-quoted string literal for `text`, newlines preserved."""
     s = str(text or "").replace("\\", "\\\\").replace('"', '\\"').replace("\r\n", "\n")
     return '"' + s.replace("\n", '" & linefeed & "') + '"'
+
+
+def pairs(field: str) -> list[tuple[str, str]]:
+    """The (label, value) pairs packed into one field — GS between pairs, FS inside each
+    (`AS_GS` / `AS_FS` in the script). An item with no FS is not a pair and is skipped."""
+    return [tuple(item.split(FS, 1)) for item in field.split(GS) if FS in item]
 
 
 def records(output: str) -> list[list[str]]:

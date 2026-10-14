@@ -107,10 +107,9 @@ def _fetch(url: str) -> str:
             # machine or the LAN (a local service trusts localhost).
             raise ToolError(f"redirect to a private address ({host}) refused — not followed")
         if host not in contacted:
-            blocked = egress.check("web_extract", host, url)
+            blocked = egress.check_and_record("web_extract", host, url, n_bytes=len(url))
             if blocked:
                 raise ToolError(blocked)
-            egress.record("web_extract", host, url, n_bytes=len(url))
             contacted.add(host)
     raise ToolError(f"too many redirects (over {_MAX_REDIRECTS}) fetching {url}")
 
@@ -134,13 +133,10 @@ def _local_extract(url: str) -> str:
 @register_tool("read_only", untrusted=True)
 def web_search(query: str):
     """Execute a web search query. Keyless DuckDuckGo — no API key, no account, ever."""
-    blocked = egress.check("web_search", "duckduckgo.com", query)
+    blocked = egress.check_and_record("web_search", "duckduckgo.com", query,
+                                      provider="duckduckgo", n_bytes=len(query or ""))
     if blocked:
         return blocked
-    # Recorded BEFORE the attempt — the ledger's deliberate fail-toward-recording property
-    # (egress.record docstring): a call that dies mid-flight still left the machine.
-    egress.record("web_search", "duckduckgo.com", query, provider="duckduckgo",
-                  n_bytes=len(query or ""))
     return _ddg_search(query, _max_results())
 
 
@@ -155,10 +151,8 @@ def web_extract(url: str):
     if not url:
         raise ToolError("No URL provided to extract.")
     host = egress.host_of(url)
-    blocked = egress.check("web_extract", host, url)
+    blocked = egress.check_and_record("web_extract", host, url, n_bytes=len(url))
     if blocked:
         return blocked
-    # Recorded before the send (fail-toward-recording); _fetch records each further host a
-    # redirect reaches.
-    egress.record("web_extract", host, url, n_bytes=len(url))
+    # _fetch records each further host a redirect reaches.
     return _local_extract(url)  # its ToolError is the call's failure

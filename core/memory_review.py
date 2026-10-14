@@ -40,7 +40,7 @@ from langchain.messages import HumanMessage
 
 import diag
 from core.state import STEER_PREFIX, this_turn
-from stores.memory_registry import _atomic_write, normalize_layer
+from stores.memory_registry import normalize_layer
 from textutil import clip, visible_text
 
 # Candidate sources, in the order the review lists them.
@@ -59,7 +59,7 @@ _SUMMARY_BULLETS = 8
 # What `ask` returns when the user interrupts the review (Ctrl-C / Ctrl-D): the caller passes it
 # as ui.ask's on_interrupt so the interrupt resolves in the review's own vocabulary — "stop,
 # leave the rest pending" — never as the empty reply a y/N prompt reads as "drop".
-INTERRUPT = "\x03"
+from core.memory_setup import INTERRUPT  # what ui.ask hands back for Ctrl-C / Ctrl-D
 
 
 def _candidate(layer: str, text: str, source: str, run_id=None, *, due=None,
@@ -182,7 +182,7 @@ def save_pending(candidates: list[dict]) -> None:
             if path.exists():
                 path.unlink()
             return
-        _atomic_write(path, json.dumps({"saved_at": datetime.now().isoformat(timespec="seconds"),
+        diag.atomic_write_text(path, json.dumps({"saved_at": datetime.now().isoformat(timespec="seconds"),
                                         "candidates": candidates[-_MAX_PENDING:]}, indent=1))
     except Exception as exc:
         diag.log(f"memory review: pending queue write failed: {exc}")
@@ -229,7 +229,7 @@ def note_compaction(summary: str, run_id=None) -> int:
         path = summary_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().isoformat(timespec="minutes")
-        _atomic_write(path, f"# Last compaction summary ({stamp})\n\n{text}\n")
+        diag.atomic_write_text(path, f"# Last compaction summary ({stamp})\n\n{text}\n")
     except Exception as exc:
         diag.log(f"memory review: summary persist failed: {exc}")
     return add_pending(summary_candidates(text, run_id))

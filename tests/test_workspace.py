@@ -408,12 +408,13 @@ def test_banner_names_the_working_folder(launched):
 
 
 def test_the_loop_benchmark_never_plants_in_the_launch_folder(monkeypatch, launched):
-    import benchmark
+    from bench import loop
+    from bench.tasks import TASKS
     from config import get_config
 
-    monkeypatch.setattr(benchmark, "run_query", lambda graph, q: {"status": "ok", "response": "x",
-                        "iterations": 1, "tools_called": [], "hygiene": 0, "capped": False})
-    benchmark.run_loop_benchmark(object())
+    loop.run(object(), TASKS, lambda graph, q, **_forced: {
+        "status": "ok", "response": "x", "iterations": 1, "tools_called": [], "hygiene": 0,
+        "capped": False})
     assert not list(launched.glob("bench_*"))
     assert workspace.root() == get_config().path("workspace")
 

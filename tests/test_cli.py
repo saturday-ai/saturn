@@ -552,189 +552,12 @@ def test_benchmark_is_the_trust_and_loop_benchmarks_only():
                  "GROUNDING_BAIT", "FABRICATION_PROBES"):
         assert not hasattr(benchmark, gone), gone
     assert benchmark.GATE_PROBES and benchmark.INJECTION_PROBES  # the graded trust probes
-    assert benchmark.LOOP_TASKS
+    assert callable(benchmark.run_loop)                           # the loop benchmark: bench/
+    for gone in ("LOOP_TASKS", "grade_loop_task", "summarize_loop", "_loop_fixtures"):
+        assert not hasattr(benchmark, gone), gone                 # moved, not copied
 
 
-# --- loop-benchmark grading (2026-09-28, pivot "Loop improvements" #1) ---------------------
-
-def _loop_entry(**over):
-    """A clean run_query entry for a loop task: one pass, no tools, a real answer."""
-    base = {"status": "ok", "response": "Here is the answer.", "iterations": 1,
-            "tools_called": [], "hygiene": 0, "capped": False, "latency_s": 1.0,
-            "context_tokens": 100}
-    base.update(over)
-    return base
-
-
-def test_loop_grade_clean_chat_passes():
-    import benchmark
-
-    task = {"id": "t", "shape": "chat", "query": "hi", "tools": set(), "required": [],
-            "max_passes": 1}
-    assert benchmark.grade_loop_task(task, _loop_entry()) == []
-
-
-def test_loop_grade_tool_shape_tags():
-    import benchmark
-
-    task = {"id": "t", "shape": "lookup", "query": "q", "tools": {"read_file"},
-            "required": [{"read_file"}], "max_passes": 2, "answer_any": ["7731"]}
-    # The right tool, the right value (commas in the answer are ignored), two passes: clean.
-    assert benchmark.grade_loop_task(
-        task, _loop_entry(tools_called=["read_file"], iterations=2, response="It is 7,731.")
-    ) == []
-    tags = benchmark.grade_loop_task(
-        task, _loop_entry(tools_called=["read_file", "web_search"], iterations=4,
-                          response="not sure", hygiene=2))
-    assert "wrong_tool:web_search" in tags
-    assert "over_passes:4/2" in tags
-    assert "wrong_answer" in tags
-    assert "hygiene:2" in tags
-    # A required tool never executed.
-    assert "missing_tool:read_file" in benchmark.grade_loop_task(
-        task, _loop_entry(tools_called=[], iterations=1, response="It is 7731."))
-
-
-def test_loop_grade_dependent_calls_must_wait_a_round():
-    import benchmark
-
-    task = {"id": "t", "shape": "multi", "query": "q", "tools": {"read_file", "write_file"},
-            "required": [{"read_file"}, {"write_file"}], "max_passes": 4,
-            "ordered": ("read_file", "write_file")}
-    ok = _loop_entry(tools_called=["read_file", "write_file"], iterations=3, response="done")
-    ok["tool_passes"] = [("read_file", 1), ("write_file", 2)]
-    assert benchmark.grade_loop_task(task, ok) == []
-    together = dict(ok, tool_passes=[("read_file", 1), ("write_file", 1)])
-    assert "same_pass:read_file+write_file" in benchmark.grade_loop_task(task, together)
-
-
-def test_loop_grade_phantom_stub_capped_error():
-    import benchmark
-    from nodes.agent import NO_ANSWER_TEXT
-
-    task = {"id": "t", "shape": "lookup", "query": "q", "tools": {"read_file"},
-            "required": [{"read_file"}], "max_passes": 2}
-    # Text that describes the action with no call is the phantom shape — tagged on top of
-    # the missing tool so the summary can count it.
-    tags = benchmark.grade_loop_task(task, _loop_entry(response="I'll read the file now."))
-    assert "phantom" in tags and "missing_tool:read_file" in tags
-    assert "phantom" not in benchmark.grade_loop_task(
-        task, _loop_entry(response="The file says 7731."))
-    assert "stub" in benchmark.grade_loop_task(
-        task, _loop_entry(response=NO_ANSWER_TEXT, tools_called=["read_file"], iterations=2))
-    assert "stub" in benchmark.grade_loop_task(task, _loop_entry(response="  "))
-    assert "capped" in benchmark.grade_loop_task(
-        task, _loop_entry(capped=True, iterations=16, tools_called=["read_file"]))
-    assert benchmark.grade_loop_task(task, {"status": "error", "error": "boom"}) == ["error"]
-
-
-def test_loop_grade_required_any_of_and_file_check(tmp_path):
-    import benchmark
-
-    task = {"id": "t", "shape": "multi", "query": "q",
-            "tools": {"list_directory", "find_files", "write_file"},
-            "required": [{"list_directory", "find_files"}, {"write_file"}], "max_passes": 3,
-            "check_file": (tmp_path / "out.txt", "ready")}
-    entry = _loop_entry(tools_called=["find_files", "write_file"], iterations=3)
-    assert "file_missing" in benchmark.grade_loop_task(task, entry)
-    (tmp_path / "out.txt").write_text("not it")
-    assert "file_wrong" in benchmark.grade_loop_task(task, entry)
-    (tmp_path / "out.txt").write_text("all READY\n")
-    assert benchmark.grade_loop_task(task, entry) == []
-
-
-def test_loop_summary_by_shape():
-    import benchmark
-
-    results = [
-        {"id": "a", "shape": "chat", "tags": [], "iterations": 1, "latency_s": 1.0,
-         "hygiene": 0, "capped": False},
-        {"id": "b", "shape": "chat", "tags": ["phantom", "missing_tool:x"], "iterations": 1,
-         "latency_s": 3.0, "hygiene": 0, "capped": False},
-        {"id": "c", "shape": "multi", "tags": ["hygiene:2", "capped"], "iterations": 16,
-         "latency_s": 40.0, "hygiene": 2, "capped": True},
-    ]
-    s = benchmark.summarize_loop(results)
-    assert s["total"] == 3 and s["passed"] == 1
-    assert s["by_shape"]["chat"] == {"n": 2, "passed": 1, "mean_passes": 1.0, "mean_latency_s": 2.0}
-    assert s["by_shape"]["multi"]["passed"] == 0
-    assert s["phantom"] == 1 and s["hygiene"] == 2 and s["capped"] == 1
-    assert s["tags"]["missing_tool"] == 1 and s["tags"]["hygiene"] == 1
-    assert s["failed"] == ["b", "c"]
-
-
-def test_loop_tasks_are_well_formed():
-    """Every task names an existing tool, a shape the summary groups by, and a pass bound;
-    each required group is a subset of the allowed set; ids are unique."""
-    import benchmark
-    from tools.registry import tools_by_name
-
-    ids = [t["id"] for t in benchmark.LOOP_TASKS]
-    # 36: the six messaging-routing tasks (2026-10-03) took it past the old 30
-    assert 20 <= len(ids) <= 36 and len(set(ids)) == len(ids)
-    for t in benchmark.LOOP_TASKS:
-        assert t["shape"] in benchmark.LOOP_SHAPES, t["id"]
-        assert t["max_passes"] >= 1
-        assert t["tools"] <= set(tools_by_name), (t["id"], t["tools"] - set(tools_by_name))
-        for group in t["required"]:
-            assert group and group <= t["tools"], t["id"]
-
-
-def test_loop_benchmark_run_is_offline_gradable(monkeypatch, isolated_paths):
-    """run_loop_benchmark plants its fixtures in the (isolated) workspace, grades every task
-    from run_query's entry, removes what it planted, and never touches a model."""
-    import benchmark
-
-    seen = []
-
-    def fake_run_query(graph, q):
-        seen.append(q)
-        return _loop_entry(response="I'll get right on that.")
-
-    monkeypatch.setattr(benchmark, "run_query", fake_run_query)
-    out = benchmark.run_loop_benchmark(object())
-    assert len(seen) == len(benchmark.LOOP_TASKS)
-    assert out["summary"]["total"] == len(benchmark.LOOP_TASKS)
-    assert {r["id"] for r in out["results"]} == {t["id"] for t in benchmark.LOOP_TASKS}
-    from config import get_config
-    leftovers = sorted(p.name for p in get_config().path("workspace").glob("bench_*"))
-    assert leftovers == []
-
-
-def test_loop_grade_a_question_is_read_without_the_answer_trailers():
-    """The model asked "Which family chat?" — the Sources receipt appended after it must not
-    turn that into no_question (live messaging run, 2026-10-03)."""
-    import benchmark
-
-    task = {"id": "t", "shape": "messaging", "query": "q", "tools": {"find_group_chats"},
-            "required": [], "max_passes": 3, "must_ask": True}
-    asked = "Which family chat should I message?\n\nSources:\n  [1] find_group_chats(query='family')"
-    assert benchmark.grade_loop_task(task, _loop_entry(response=asked, tools_called=["find_group_chats"],
-                                                       iterations=2)) == []
-    told = "I found two family chats.\n\nSources:\n  [1] find_group_chats(query='family')"
-    assert "no_question" in benchmark.grade_loop_task(
-        task, _loop_entry(response=told, tools_called=["find_group_chats"], iterations=2))
-
-
-def test_loop_grade_a_question_need_not_be_the_last_sentence():
-    """The 9b asked which file and what name, then offered to check Finder — a question with a
-    trailing offer, graded no_question on every run before 2026-10-07 because it did not END
-    in "?". A request for the missing facts is asking; a closing courtesy is not."""
-    import benchmark
-
-    task = {"id": "t", "shape": "robust", "query": "Rename the file.", "tools": {"ask_user"},
-            "required": [], "max_passes": 2, "must_ask": True}
-
-    def grade(response):
-        return benchmark.grade_loop_task(task, _loop_entry(response=response, iterations=1))
-
-    assert grade("I need to know which file you want to rename and what you want to name it. "
-                 "Could you please provide:\n1. The current filename\n2. The new filename you "
-                 "want\n\nOr if you have files selected in Finder, I can check those for you.") == []
-    assert grade("Which file do you mean? I can also look at your Finder selection.") == []
-    assert "no_question" in grade("I renamed the file.")
-    assert "no_question" in grade("I renamed the file. Let me know if you need anything else.")
-
+# --- the loop benchmark (graded in bench/ since 2026-10-07: tests/test_bench.py) ----------
 
 def test_a_declined_call_is_not_a_hygiene_bounce():
     """run_query counts a ToolMessage with no tool_events record as a call the agent answered
@@ -753,39 +576,18 @@ def test_a_declined_call_is_not_a_hygiene_bounce():
     assert benchmark._hygiene_count(msgs, [{"name": "find_group_chats"}]) == 1
 
 
-def test_loop_grade_who_a_declined_send_named():
-    """The messaging tasks grade the send the gate was ASKED about (the benchmark declines every
-    send): the right person or group chat, none at all, or one that should not have come."""
-    import benchmark
-    from tools.messages import chat_ref
-
-    to_sam = [{"name": "send_message", "args": {"to": "+1 (555) 010-2000", "text": "late"}}]
-    assert benchmark._send_tags(("to", "+15550102000"), to_sam) == []
-    assert benchmark._send_tags(("to", "+15550000004"), to_sam) == ["wrong_target:to=+1 (555) 010-2000"]
-    ref = chat_ref("any;+;chat70c1")
-    to_group = [{"name": "search_contacts", "args": {}},
-                {"name": "send_message", "args": {"chat": ref, "text": "x"}}]
-    assert benchmark._send_tags(("chat", "any;+;chat70c1"), to_group) == []
-    assert benchmark._send_tags(("chat", "any;+;chat5a11"), to_group) == [f"wrong_target:chat={ref}"]
-    # the group was meant, the model texted one person instead
-    assert benchmark._send_tags(("chat", "any;+;chat5a11"), to_sam)[0].startswith("wrong_target:to=")
-    assert benchmark._send_tags(("chat", "any;+;chat5a11"), []) == ["missing_send"]
-    assert benchmark._send_tags(None, to_group) == ["unwanted_send"]
-    assert benchmark._send_tags(None, []) == []
-
-
 def test_the_messaging_world_is_planted_and_never_reaches_the_users_apps(monkeypatch):
     """Under the planted world the messaging tools read fixtures — Sam's card, the planted
     groups, the climbing chat — every other AppleScript is refused, and leaving it restores
     the real seams."""
-    import benchmark
+    from bench.worlds import messaging_world
     from tools import applescript, contacts, messages
     from tools.messages import chat_ref
     from tools.registry import tools_by_name
     from tools.toolspec import ToolError
 
     real = (contacts._cards, messages._groups, messages._db_path, applescript._run)
-    with benchmark._messaging_world():
+    with messaging_world():
         (sam,) = tools_by_name["search_contacts"].invoke({"query": "Sam"})
         assert sam["phones"][0]["value"] == "+1 555 010 2000"
         found = tools_by_name["find_group_chats"].invoke({"query": "climbing"})

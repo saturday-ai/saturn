@@ -449,11 +449,19 @@ def generate(runnable, messages, *, tag: str = "", **kwargs):
     try:
         return runnable.invoke(messages, **kwargs)
     except Exception as exc:
-        if "reasoning" not in kwargs or not _is_think_rejection(exc):
-            raise
-        _NO_THINK_SUPPORT.add(tag)
-        diag.log(f"llms: {tag or 'model'} rejects the think flag — retrying without it")
-        return runnable.invoke(messages, **{k: v for k, v in kwargs.items() if k != "reasoning"})
+        kwargs = _without_think(kwargs, tag, exc)
+        return runnable.invoke(messages, **kwargs)
+
+
+def _without_think(kwargs: dict, tag: str, exc: Exception) -> dict:
+    """The kwargs for the one retry a think-flag rejection earns; any other failure is
+    re-raised. `tag` is remembered in `_NO_THINK_SUPPORT`, so that model is never sent the
+    flag again."""
+    if "reasoning" not in kwargs or not _is_think_rejection(exc):
+        raise exc
+    _NO_THINK_SUPPORT.add(tag)
+    diag.log(f"llms: {tag or 'model'} rejects the think flag — retrying without it")
+    return {k: v for k, v in kwargs.items() if k != "reasoning"}
 
 
 def call_failure(exc: BaseException) -> "str | None":
@@ -485,11 +493,7 @@ def stream(runnable, messages, *, tag: str = "", **kwargs):
         gen = runnable.stream(messages, **kwargs)
         first = next(gen, None)
     except Exception as exc:
-        if "reasoning" not in kwargs or not _is_think_rejection(exc):
-            raise
-        _NO_THINK_SUPPORT.add(tag)
-        diag.log(f"llms: {tag or 'model'} rejects the think flag — re-streaming without it")
-        kwargs = {k: v for k, v in kwargs.items() if k != "reasoning"}
+        kwargs = _without_think(kwargs, tag, exc)
         gen = runnable.stream(messages, **kwargs)
         first = next(gen, None)
 

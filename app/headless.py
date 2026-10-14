@@ -184,17 +184,9 @@ def run_headless(args) -> None:
     # The gate posture warning the interactive startup block prints — same fact, stderr:
     # a permissions.json that failed to load means persisted /policy risk overrides and
     # /policy allow prefixes are NOT in force for this run.
-    from trust import policy as _policy
+    from app.startup import problems as startup_problems
 
-    if _policy.load_problem():
-        print(f"warning: {_policy.load_problem()}", file=sys.stderr)
-    from core import think as _think
-
-    for problem in _think.problems():
-        print(f"warning: {problem}", file=sys.stderr)
-    from tools import registry as _registry
-
-    for problem in _registry.toolkit_problems():
+    for problem in startup_problems():
         print(f"warning: {problem}", file=sys.stderr)
     tracer = Tracer(DB_PATH)
     state = _initial_state()

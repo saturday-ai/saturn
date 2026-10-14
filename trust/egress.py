@@ -246,6 +246,20 @@ def check(channel: str, host: str, detail: str = "", *, provider: str = "") -> "
     return None
 
 
+def check_and_record(channel: str, host: str, detail: str = "", *, provider: str = "",
+                     n_bytes: int = 0) -> "str | None":
+    """`check()` then `record()` as one step, for the exits that hand a refusal string back:
+    the refusal when the op is blocked (check() recorded it as such), else None once the SENT
+    event is on the ledger. Recorded BEFORE the op is attempted — the ledger's deliberate
+    fail-toward-recording property (record's docstring): a call that dies mid-flight still
+    left the machine. Callers must not re-implement the pair."""
+    blocked = check(channel, host, detail, provider=provider)
+    if blocked:
+        return blocked
+    record(channel, host, detail, provider=provider, n_bytes=n_bytes)
+    return None
+
+
 def check_or_raise(channel: str, host: str, detail: str = "", *, subject: str = "",
                    provider: str = "") -> None:
     """The raising twin of `check()`, for the exits that CANNOT hand a refusal string back: an

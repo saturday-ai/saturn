@@ -8,6 +8,7 @@ captured and fed canned output) and the platform selector is pinned per test, so
 is exercised on the Linux CI leg and the honest-refusal path on a Mac.
 """
 
+import notify
 import subprocess
 from datetime import datetime, timedelta, timezone
 
@@ -220,7 +221,7 @@ def test_notes_tools_report_non_mac_honestly(monkeypatch):
 @pytest.fixture
 def clock(monkeypatch):
     import tools.calendar as cal
-    monkeypatch.setattr(cal, "_now", lambda: NOW)
+    monkeypatch.setattr(notify, "now", lambda: NOW)
     return NOW
 
 

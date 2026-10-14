@@ -48,6 +48,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Changed
 
+- **A long tool call streams without a stall at the end.** The chunks of a streamed answer
+  are merged once when the stream closes instead of on every chunk, which re-parsed the
+  accumulated tool-call arguments each time — a `write_file` of a few thousand words no longer
+  costs a second of CPU before it reaches the gate.
 - **`/tools` opens on the toolkits**, not the flat list of every tool. The flat list is
   `/tools --all`, grouped by toolkit. `/policy risk` still lists and sets the tier of a tool
   whose toolkit is off.
@@ -63,6 +67,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Fixed
 
+- **`/policy risk` says what a refused tier change is about.** Lowering the tier of
+  `create_skill`, `add_document` or `remove_document` is refused with "Saving a skill always
+  asks" (or "Adding a document…"), not "A send always asks" — the wording comes from the one
+  table that lists what always asks.
 - **Saturn no longer spins on a call it was already refused.** Asked for something no tool
   does ("remove the memory of my name"), a small model could issue the same refused call over
   and over — thirteen times in one turn — until the pass budget ran out, which looked like a
