@@ -52,16 +52,17 @@ def startup_load(interactive: bool = True):
 def problems() -> list[str]:
     """The startup health report both entry paths print, as lines in one order: a think
     setting that is not one of its values (it runs as the default and says so), a `toolkits:`
-    line that turned nothing off, a permissions.json that failed to load (the gate ran on
+    line that turned nothing off, a pack whose dependencies are not installed, a permissions.json that failed to load (the gate ran on
     defaults inside policy._load — silently, since trust/ never imports tui; registry
     triggered the load at import, so the report is final by now). One list, so a source can
     never be reported in one mode and not the other; the REPL adds its interactive-only
     sources (hooks, skills, MCP) around it."""
+    import packs
     from core import think
     from tools import registry
     from trust import policy
 
-    lines = list(think.problems()) + list(registry.toolkit_problems())
+    lines = list(think.problems()) + list(registry.toolkit_problems()) + packs.problems()
     gate = policy.load_problem()
     if gate:
         lines.append(gate)

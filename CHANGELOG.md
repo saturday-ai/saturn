@@ -9,6 +9,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Added
 
+- **Packs — Saturn tailored to one kind of work, the biochem pack first.** A pack is a block
+  of tools on top of base Saturn, off until you turn it on. The biochem pack's `labmath`
+  toolkit does the bench math a bio or chem lab does every day: dilutions (C1V1 = C2V2,
+  including "10X" stocks), how much to weigh for a molar solution, a serial dilution tube by
+  tube, a buffer recipe at a pH (Tris, HEPES, MOPS, PIPES, MES, phosphate, acetate, with Tris's
+  shift at 4 °C), and a formula's molecular weight, hydrates included. Every answer is
+  computed with its units and shows its work, and an impossible request — a "dilution" that
+  would concentrate — is refused, not guessed. `pip install 'saturn-agent[biochem]'`, then
+  `/tools on labmath`. With the pack off, Saturn is exactly as before.
 - **Saturn asks who you are.** After the first launch picks your model, Saturn offers three
   quick questions — what to call you, what you do, and anything it should never do. Enter
   starts them, `n` skips, and the offer is made once. Each answer is saved straight to your

@@ -13,7 +13,7 @@ from langchain.messages import HumanMessage, ToolMessage
 
 from agent import build_agent, run_turn, _initial_state
 from config import get_config
-from tools.registry import off_toolkits, risk_of
+from tools.registry import off_toolkits, packs_on, risk_of
 from textutil import visible_controls
 
 # The TRUST BENCHMARK — the graded headline artifact and the default run (the LOOP BENCHMARK,
@@ -435,6 +435,19 @@ def think_label() -> str:
     return level if level != "auto" else think.policy()
 
 
+def apply_on(spec: str) -> list[str]:
+    """`--on labmath`: turn toolkits on for this process — a pack's, which is off by default
+    (packs/) — in memory only. Returns every pack toolkit that is on for the run."""
+    from bench.loop import toolkit_keys
+    from tools import registry
+
+    try:
+        registry.set_toolkits(toolkit_keys(spec), True)
+    except ValueError as exc:
+        raise SystemExit(f"--on: {exc} (the toolkits are listed by /tools)")
+    return registry.packs_on()
+
+
 def apply_off(spec: str) -> list[str]:
     """`--off messages,shortcuts`: turn toolkits off for this process (tools/registry — the
     switch behind /tools), in memory only. Returns every toolkit that is off for the run."""
@@ -482,7 +495,8 @@ def run_loop(output_path: Path | None = None, runs: int = 1,
             if output_path is not None else loop.report_path(_log_dir(), tier, label, run, runs))
         payload = {"version": loop.VERSION, "timestamp": datetime.now().isoformat(),
                    "model": tier, "think": label, "toolkits": toolkits or "all",
-                   "toolkits_off": off_toolkits(), "loop_summary": s, "loop": out["results"]}
+                   "toolkits_off": off_toolkits(), "packs_on": packs_on(),
+                   "loop_summary": s, "loop": out["results"]}
         path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
         print(f"Loop benchmark report written to {path}")
     return path, s
@@ -845,6 +859,14 @@ def main():
              "apart. In memory only.",
     )
     parser.add_argument(
+        "--on",
+        default=None,
+        metavar="TOOLKITS",
+        help="Turn these toolkits on for the run, comma-separated — a pack's toolkit is off "
+             "by default. A pack's loop tasks run either way: off is base Saturn, the "
+             "baseline the pack is measured against. In memory only.",
+    )
+    parser.add_argument(
         "--toolkit",
         default=None,
         metavar="TOOLKITS",
@@ -879,6 +901,8 @@ def main():
         apply_tier(args.tier)
     if args.think:
         apply_think(args.think)
+    if args.on:
+        print(f"pack toolkits on for this run: {', '.join(apply_on(args.on)) or 'none'}")
     if args.off:
         print(f"toolkits off for this run: {', '.join(apply_off(args.off))}")
 

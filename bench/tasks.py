@@ -327,6 +327,13 @@ TASKS: list[Task] = [
        par=2, off=("calendar",), ideal=[("list_calendar_events", {})]),
 ]
 
+# The packs' tasks (packs/<name>/bench.py), after the base suite. The registry loads the packs;
+# importing it first also keeps the bound catalog's order the agent's (see _ref).
+import packs  # noqa: E402
+import tools.registry  # noqa: E402,F401
+
+TASKS += packs.bench_tasks()
+
 
 def task(task_id: str) -> Task:
     return next(t for t in TASKS if t.id == task_id)

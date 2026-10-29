@@ -210,6 +210,8 @@ toolkits:
   desktop: true         # the front browser tab, the Finder selection
   notifications: true   # schedule a one-off alert
   skills: true          # save a procedure as a skill
+  # Packs (packs/): domain toolkits on top of base Saturn, off until `true`.
+  labmath: false        # biochem pack · dilutions, molar solutions, serial dilutions, buffers, molecular weight
 
 # --- scheduled notifications (notify/, the schedule_notification tool, /notify) -----------
 notify:

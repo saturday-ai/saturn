@@ -231,7 +231,8 @@ def test_every_task_is_well_formed():
 
     ids = [t.id for t in TASKS]
     assert len(set(ids)) == len(ids)
-    assert len(TASKS) <= 60, "adding a task? name the failure no existing task catches, and cut one"
+    base = [t for t in TASKS if not (t.toolkit in TOOLKITS and TOOLKITS[t.toolkit].pack)]
+    assert len(base) <= 60, "adding a task? name the failure no existing task catches, and cut one"
     per = {k: sum(1 for t in TASKS if t.toolkit == k) for k in {t.toolkit for t in TASKS}}
     assert max(per.values()) <= 12, per
     for t in TASKS:

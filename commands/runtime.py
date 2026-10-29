@@ -77,7 +77,8 @@ def _show_toolkits() -> None:
     for key, kit in TOOLKITS.items():
         n = len(registry.toolkit_tools(key))
         if n:
-            rows.append((key, (str(n), "dim"), _toolkit_state(key), (kit.about, "dim")))
+            about = f"{kit.about}  ·  {kit.pack} pack" if kit.pack else kit.about
+            rows.append((key, (str(n), "dim"), _toolkit_state(key), (about, "dim")))
     ui.table(rows)
 
 
