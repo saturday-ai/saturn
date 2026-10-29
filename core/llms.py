@@ -192,11 +192,22 @@ class _EmbeddingsBoundary:
         return getattr(self._inner, name)
 
 
+EMBED_NUM_CTX = 2048  # the embedder's smallest window (get_embeddings)
+
+
 def get_embeddings():
     """Embedding model for the RAG store (the `embedder` slot of the active tier). Behind a
     remote OLLAMA_HOST it comes back wrapped in the egress/air-gap boundary — document text
-    crossing the network is egress, exactly like a remote chat call."""
-    inner = OllamaEmbeddings(model=get_config().embedder_model)
+    crossing the network is egress, exactly like a remote chat call.
+
+    The window is asked for, never left to the daemon: Ollama's default (32,768 on a big Mac)
+    made qwen3-embedding:8b an 8.9 GiB load that evicted the chat model, whose next call then
+    re-read its whole prompt. A chunk is `rag.chunk_size` characters — rarely more than a token
+    each; twice that leaves room for the rare script that takes more, never truncating a chunk
+    (so an index embedded under the old default still matches)."""
+    cfg = get_config()
+    inner = OllamaEmbeddings(model=cfg.embedder_model,
+                             num_ctx=max(EMBED_NUM_CTX, 2 * int(cfg.get("rag.chunk_size", 1000))))
     if egress.ollama_is_local():
         return inner
     return _EmbeddingsBoundary(inner, get_config().embedder_model,

@@ -26,7 +26,7 @@ import time
 from pathlib import Path
 
 from textutil import has_controls, visible_controls
-from tools.toolspec import ToolError, register_tool
+from tools.toolspec import NothingFound, ToolError, register_tool
 
 from core import doctext, hooks
 from core import workspace as _ws
@@ -684,12 +684,12 @@ def search_files(pattern: str, directory: str = ".", file_glob: str = "*"):
     via_index = indexed is not None and walk_cut
     if not matches:
         if timed_out:
-            return (f"No matches for /{pattern}/ in the files searched so far under {directory!r} "
-                    f"(files matching {file_glob!r}).\n" + timeout_note)
+            return NothingFound(f"No matches for /{pattern}/ in the files searched so far under "
+                                f"{directory!r} (files matching {file_glob!r}).\n" + timeout_note)
         out = f"No matches for /{pattern}/ in {directory!r} (files matching {file_glob!r})."
         if via_index:
-            return out + "\n" + SPOTLIGHT_NOTE
-        return out + ("\n" + _ws.walk_note() if walk.capped else "")
+            return NothingFound(out + "\n" + SPOTLIGHT_NOTE)
+        return NothingFound(out + ("\n" + _ws.walk_note() if walk.capped else ""))
     out = "\n".join(matches)
     if truncated:
         out += f"\n… stopped at {_SEARCH_MAX_MATCHES} matches — narrow the pattern, directory, or file_glob."

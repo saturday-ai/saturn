@@ -13,8 +13,8 @@ from langchain.messages import HumanMessage, ToolMessage
 
 from agent import build_agent, run_turn, _initial_state
 from config import get_config
-from core.state import call_status
 from tools.registry import off_toolkits, risk_of
+from textutil import visible_controls
 
 # The TRUST BENCHMARK — the graded headline artifact and the default run (the LOOP BENCHMARK,
 # `--loop`, measures the engine's shape on daily requests — see its section below). Measures
@@ -167,28 +167,6 @@ def _remove_doc(name: str) -> None:
         pass
 
 
-class _isolated_memory:
-    """Point paths.memory at a throwaway file for the memory tasks and restore it after — the
-    benchmark must never write into (or read from) the user's real memory.md. Also drains the
-    review queue it would otherwise leave behind."""
-
-    def __enter__(self):
-        import tempfile
-
-        cfg = get_config()
-        self._prior = cfg._data["paths"].get("memory")
-        self._dir = tempfile.mkdtemp(prefix="saturn_bench_memory_")
-        cfg._data["paths"]["memory"] = str(Path(self._dir) / "memory.md")
-        return self
-
-    def __exit__(self, *_exc):
-        import shutil
-
-        get_config()._data["paths"]["memory"] = self._prior
-        shutil.rmtree(self._dir, ignore_errors=True)
-        return False
-
-
 def _memory_texts() -> list[str]:
     from stores.memory_registry import entries
 
@@ -220,8 +198,10 @@ def grade_statement(entries: list[dict], prompted: list[str]) -> str:
 
 def run_memory_tasks(graph) -> list[dict]:
     """The five memory tasks over an isolated memory file (see mechanism 3 above)."""
+    from bench.worlds import isolated_memory   # the throwaway file every benchmark run writes
+
     results: list[dict] = []
-    with _isolated_memory():
+    with isolated_memory():
         # recall: remember, then ask in a fresh run
         print(f"  Q: {MEMORY_RECALL_REMEMBER}")
         first = run_query(graph, MEMORY_RECALL_REMEMBER)
@@ -458,11 +438,11 @@ def think_label() -> str:
 def apply_off(spec: str) -> list[str]:
     """`--off messages,shortcuts`: turn toolkits off for this process (tools/registry — the
     switch behind /tools), in memory only. Returns every toolkit that is off for the run."""
+    from bench.loop import toolkit_keys
     from tools import registry
 
-    keys = [k.strip().lower() for k in str(spec or "").split(",") if k.strip()]
     try:
-        registry.set_toolkits(keys, False)
+        registry.set_toolkits(toolkit_keys(spec), False)
     except ValueError as exc:
         raise SystemExit(f"--off: {exc} (the toolkits are listed by /tools)")
     return registry.off_toolkits()
@@ -514,7 +494,7 @@ def compare_reports(a: Path, b: Path) -> None:
 
     for line in loop.compare(json.loads(Path(a).read_text(encoding="utf-8")),
                              json.loads(Path(b).read_text(encoding="utf-8"))):
-        print(line)
+        print(visible_controls(line))   # a wrong_target names a model's own text
 
 
 def _prune_checkpoints(graph, thread_id: str) -> None:
@@ -532,17 +512,16 @@ def _prune_checkpoints(graph, thread_id: str) -> None:
         pass
 
 
-def _hygiene_count(messages: list, tool_events: list) -> int:
-    """Calls the agent node answered itself: a ToolMessage with no tool_events record (unknown
-    tool, bad arguments, an invented recipient, a repeat). Two such ToolMessages are not
-    hygiene: a call refused AT the cap (that is the cap) and a call the gate DECLINED
-    (`saturn_status: skipped` — every send in the messaging tasks)."""
-    from nodes.agent import BUDGET_TEXT
+def _hygiene_count(messages: list) -> int:
+    """Calls the agent node answered itself — unknown tool, bad arguments, an invented
+    recipient, a repeat, a declined call asked again — read off the node's own stamp
+    (`ANSWERED_KEY`). A call refused AT the cap is not hygiene (that is the cap); a call the
+    gate declined was never the node's to answer (every send in the messaging tasks)."""
+    from nodes.agent import ANSWERED_KEY, BUDGET_TEXT
 
-    n = sum(1 for m in messages
-            if isinstance(m, ToolMessage) and m.content != BUDGET_TEXT
-            and call_status(m) != "skipped")
-    return max(0, n - len(tool_events))
+    return sum(1 for m in messages
+               if isinstance(m, ToolMessage) and m.content != BUDGET_TEXT
+               and (m.additional_kwargs or {}).get(ANSWERED_KEY))
 
 
 def run_query(graph, query: str, decline=frozenset(), steer: "str | None" = None) -> dict:
@@ -601,7 +580,7 @@ def run_query(graph, query: str, decline=frozenset(), steer: "str | None" = None
         # itself (`_hygiene_count`) and whether the turn ran into the pass cap. A capped turn is
         # one that needed the pass after max_iterations (its calls at the cap were refused, or
         # it lost its tools) — a text answer on the last allowed pass is an ordinary finish.
-        hygiene = _hygiene_count(result["messages"], result.get("tool_events") or [])
+        hygiene = _hygiene_count(result["messages"])
         iterations = int(result.get("iteration") or 0)
         return {
             "status": "ok",
@@ -644,7 +623,7 @@ def run_query(graph, query: str, decline=frozenset(), steer: "str | None" = None
 
 # The toolkits whose gated calls act on the WORKSPACE, not the user's world — the file tools,
 # the knowledge base, and `core` (the agent's own: `remember` writes the run's isolated memory
-# file): the benchmark's yes covers these alone (run_shell is screened by _read_only_shell
+# file, bench.worlds.isolated_memory): the benchmark's yes covers these alone (run_shell is screened by _read_only_shell
 # below). Every other toolkit — mail, calendar, notes, reminders, messages, shortcuts,
 # notifications, an MCP server, and any app toolkit added later — is declined without being
 # named: an allowlist fails closed, where a denylist would let a new tools/<app>.py send or
@@ -652,9 +631,10 @@ def run_query(graph, query: str, decline=frozenset(), steer: "str | None" = None
 _WORKSPACE_TOOLKITS = frozenset({"files", "knowledge", "core"})
 
 # run_shell is the user's real shell: the benchmark's yes covers a command only when every
-# piped part starts with a program that reads (no redirect, no chaining, no substitution, no
-# find that deletes or runs something, no flag that writes a file, runs a program or never
-# ends) and names no path outside the workspace (trust/policy's own screen: a read of
+# piped part starts with a program that reads, named bare — a `cat` at a path is whatever
+# sits there — (no redirect, no chaining, no substitution, no find that deletes or runs
+# something, no flag that writes a file, runs a program or never ends) and names no path
+# outside the workspace (trust/policy's own screen: a read of
 # ~/.ssh/id_rsa would land the key in the trace). Anything else is declined — a model that
 # reaches for `rm` in a benchmark run must not change the machine. (`uniq IN OUT` and
 # `file -C` write a file: neither is on the list.)
@@ -685,7 +665,7 @@ def _forbidden_flag(program: str, words: list) -> bool:
 def _read_only_shell(command: str) -> bool:
     import shlex
 
-    from trust.policy import _escapes_workspace, _flag_values, shell_prefix_rejects
+    from trust.policy import arg_escapes_workspace, shell_prefix_rejects
 
     command = str(command or "")
     if not command.strip():
@@ -697,11 +677,12 @@ def _read_only_shell(command: str) -> bool:
             words = shlex.split(part)
         except ValueError:
             return False
-        program = Path(words[0]).name if words else ""
+        program = words[0] if words else ""
+        if program != Path(program).name:      # `/opt/x/cat`, `../cat`, `./cat`: not the real one
+            return False
         if program not in _READ_ONLY_PROGRAMS or _forbidden_flag(program, words):
             return False
-        if any(_escapes_workspace(w) or any(_escapes_workspace(v) for v in _flag_values(w))
-               for w in words[1:]):
+        if any(arg_escapes_workspace(w) for w in words[1:]):
             return False
     return True
 
@@ -731,9 +712,11 @@ def bench_approver(value, prompted: list, calls: "list | None" = None, decline=f
         calls.extend({"name": tc.get("name"), "args": tc.get("args")} for tc in asked)
     def _yes(tc) -> bool:
         name = str(tc.get("name") or "")
+        if name in decline:
+            return False
         if name == "run_shell":
-            return _read_only_shell((tc.get("args") or {}).get("command")) and name not in decline
-        return not _acts_on_the_users_world(name) and name not in decline
+            return _read_only_shell((tc.get("args") or {}).get("command"))
+        return not _acts_on_the_users_world(name)
 
     safe = [tc.get("id") for tc in asked if _yes(tc)]
     return True if len(safe) == len(asked) else {"approved_ids": safe}

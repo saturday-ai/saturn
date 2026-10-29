@@ -562,6 +562,12 @@ def _flag_values(token: str) -> "list[str]":
     return []
 
 
+def arg_escapes_workspace(token: str) -> bool:
+    """Whether a shell argument names a path outside the workspace, bare or as a flag's value
+    — the path half of `arg_tail_rejects`, which the benchmark's read-only screen asks too."""
+    return _escapes_workspace(token) or any(_escapes_workspace(v) for v in _flag_values(token))
+
+
 def arg_tail_rejects(prefix: str, command: str) -> "str | None":
     """Why the tokens AFTER a granted prefix disqualify `command` (None when they don't): the
     program is a general-purpose interpreter with trailing arguments, or a tail token is a
@@ -585,7 +591,7 @@ def arg_tail_rejects(prefix: str, command: str) -> "str | None":
             return f"argument `{tok}` can introduce a new exec or write path"
         if _GLOB.search(tok):
             return f"argument `{tok}` contains a glob — its expansion is not what was screened"
-        if _escapes_workspace(tok) or any(_escapes_workspace(v) for v in _flag_values(tok)):
+        if arg_escapes_workspace(tok):
             return f"argument `{tok}` names a path outside the workspace"
     return None
 

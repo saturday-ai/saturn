@@ -76,7 +76,10 @@ SHORTCUTS = ["Log Water", "Morning Routine", "Start Focus Timer", "Share ETA"]
 
 
 def _today() -> datetime:
-    return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    """Today's first minute by the tools' own clock (notify.now), so a pinned clock moves the
+    planted events with the window the calendar tool reads."""
+    import notify
+    return notify.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 REMINDERS = [

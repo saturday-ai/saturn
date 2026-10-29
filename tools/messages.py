@@ -50,7 +50,7 @@ from pathlib import Path
 
 from tools import applescript
 from tools.applescript import AS_FS, AS_GS, AS_RS, AS_US, AppleScriptError, pairs, quote, records
-from tools.toolspec import ToolError, register_tool
+from tools.toolspec import NothingFound, ToolError, register_tool
 from trust import egress
 from trust.quarantine import CHAT_REF as _REF, same_handle
 
@@ -111,7 +111,12 @@ def is_chat_ref(text) -> bool:
 
 
 def _matches_ref(ident: str, ref: str) -> bool:
-    return _digest(ident).startswith(str(ref or "").strip()[1:])
+    """Whether `ref` names the chat `ident`: a ref in the one form (`_REF` — a bare `g` or a
+    tail shorter than any find_group_chats hands out is nobody's ref; its empty tail would
+    match every chat) whose tail is a prefix of the digest, so a ref the app lengthened
+    still finds its chat."""
+    ref = str(ref or "").strip()
+    return bool(_REF.fullmatch(ref)) and _digest(ident).startswith(ref[1:])
 
 
 def _assign_refs(idents: list) -> list:
@@ -154,6 +159,34 @@ tell application "Messages"
 end tell"""
 
 
+# Every person Messages knows, as handle US full-name records: the names one-to-one rows are
+# shown with (the group listing names only people in a group). Two bulk property reads —
+# 0.18 s for 271 participants, run live 2026-10-15.
+_NAMES_SCRIPT = f"""
+tell application "Messages"
+  set hs to handle of participants
+  set fs to full name of participants
+  set out to ""
+  repeat with i from 1 to count of hs
+    set f to item i of fs
+    if f is missing value then set f to ""
+    set out to out & (item i of hs) & {AS_US} & f & {AS_RS}
+  end repeat
+  return out
+end tell"""
+
+
+def _participant_names() -> list:
+    """[(handle, name)] for every person Messages has a Contacts name for. Soft: a Messages app
+    that cannot be asked leaves the handles as they are. The seam tests replace."""
+    try:
+        output = applescript.run(_NAMES_SCRIPT, app="Messages")
+    except ToolError:
+        return []
+    return [(rec[0].strip(), rec[1].strip()) for rec in records(output)
+            if len(rec) >= 2 and rec[0].strip() and rec[1].strip()]
+
+
 def _parse_groups(output: str) -> list:
     """[{ref, guid, name, people: [{handle, name}]}] from the listing script's output, in the
     order Messages lists its chats. A person with no Contacts card is named by their handle."""
@@ -161,8 +194,8 @@ def _parse_groups(output: str) -> list:
     for rec in records(output):
         if len(rec) < 3 or ";+;" not in rec[0]:
             continue
-        people = [{"handle": handle.strip(), "name": name.strip() or handle.strip()}
-                  for handle, name in pairs(rec[2]) if handle.strip()]
+        people = [{"handle": handle, "name": name or handle}
+                  for handle, name in pairs(rec[2]) if handle]
         rows.append({"guid": rec[0].strip(), "name": rec[1].strip(), "people": people})
     for row, ref in zip(rows, _assign_refs([r["guid"] for r in rows])):
         row["ref"] = ref
@@ -568,7 +601,7 @@ def read_messages(contact: str = "", query: str = "", limit: int = 20, chat: str
             if person:
                 found = _person_filter(db, person)
                 if found is None:
-                    return f"No messages with {person} in the history."
+                    return NothingFound(f"No messages with {person} in the history.")
                 where, ids = found
             elif ref:
                 found = _chat_filter(db, ref, refs)
@@ -590,11 +623,14 @@ def read_messages(contact: str = "", query: str = "", limit: int = 20, chat: str
                 "— Full Disk Access under System Settings > Privacy & Security > Full Disk "
                 f"Access, then restart {app} and ask again") from exc
         raise ToolError(f"the Messages history could not be read: {exc}") from exc
-    by_ref, names = _app_names() if group_rows else ({}, [])
+    by_ref, group_names = _app_names() if group_rows else ({}, [])
     known: dict = {}
+    names: list = []    # filled on the first handle a row needs named: one listing per call
 
     def named(handle: str) -> str:
         """The name Messages has for a handle, however each source writes the number."""
+        if not known:
+            names.extend(_participant_names() + group_names)
         if handle not in known:
             known[handle] = next((n for h, n in names if _same_person(handle, h)), handle)
         return known[handle]
@@ -608,8 +644,12 @@ def read_messages(contact: str = "", query: str = "", limit: int = 20, chat: str
             continue
         rowid = guid_rowid.get(guid) if guid and ";+;" in guid else None
         if rowid is None:
-            out.append({"when": _when(date), "from": "me" if mine else (handle or "unknown"),
-                        "chat": chat_name or chat_id or handle or "", "text": body})
+            # A one-to-one row: the person's name, beside the number contact= and send take.
+            them = chat_id or handle or ""
+            name = named(them) if them else them
+            out.append({"when": _when(date), "from": "me" if mine else (name if handle else "unknown"),
+                        "chat": chat_name or (f"{them} · {name}" if name != them else them),
+                        "text": body})
         else:
             gref = refs.get(rowid) or chat_ref(guid)
             app_group = by_ref.get(gref)
@@ -626,7 +666,7 @@ def read_messages(contact: str = "", query: str = "", limit: int = 20, chat: str
     if len(out) < limit and len(rows) >= scan and needle:
         searched = f"the newest {scan:,} messages" + (f" with {person}" if person else "")
         if not out:
-            return (f"No messages match in {searched}; older ones were not searched — narrow "
-                    "it with contact= or chat=, or try a more specific query.")
+            return NothingFound(f"No messages match in {searched}; older ones were not searched "
+                                "— narrow it with contact= or chat=, or try a more specific query.")
         out.append({"note": f"only {searched} were searched; older ones may match too"})
-    return out or "No messages match."
+    return out or NothingFound("No messages match.")

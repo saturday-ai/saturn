@@ -15,6 +15,7 @@ from langchain.messages import AIMessageChunk
 
 import diag
 from core import hooks
+from core.pause import cancel_turn, turn_scope
 from tui import ui
 
 
@@ -44,6 +45,14 @@ def run_turn(graph, payload, config, approver, on_update=None, pause=None, on_to
     config.setdefault("recursion_limit", 200)
     query = payload.get("current_query") if isinstance(payload, dict) else None
     hooks.run("turn-start", query=query)  # the user's hooks.yaml (core/hooks); none → no cost
+    # Leaving by Ctrl-C (or any error) cancels the turn's node threads too (core/pause).
+    with turn_scope():
+        return _drive(graph, payload, config, approver, on_update, pause, on_token, on_retract,
+                      on_thinking, query)
+
+
+def _drive(graph, payload, config, approver, on_update, pause, on_token, on_retract,
+           on_thinking, query):
     pending = payload
     while True:
         if pause is not None:
@@ -54,10 +63,11 @@ def run_turn(graph, payload, config, approver, on_update=None, pause=None, on_to
         # token-by-token streaming the ResponseStream exists for. The agent rail line
         # (metrics from the update) consequently prints after the stream opens; rich inserts
         # it above the live tail, and the final render follows it.
+        # Named, not inline: an exception in this loop body must cancel the turn's node threads
+        # BEFORE the stream is closed — closing it waits for the running node (core/pause).
+        stream = graph.stream(pending, config, stream_mode=["updates", "messages", "custom"])
         try:
-            for mode, data in graph.stream(
-                pending, config, stream_mode=["updates", "messages", "custom"]
-            ):
+            for mode, data in stream:
                 if mode == "custom":
                     if on_retract and isinstance(data, dict) and data.get("type") == "retract":
                         on_retract()
@@ -86,6 +96,10 @@ def run_turn(graph, payload, config, approver, on_update=None, pause=None, on_to
                 for node, delta in data.items():
                     if on_update:
                         on_update(node, delta or {})
+        except BaseException:
+            cancel_turn()
+            stream.close()  # now, while the turn's checkpoints still exist (close_run prunes them)
+            raise
         finally:
             if pause is not None:
                 pause.stop()  # never leave the watcher live across the input() below

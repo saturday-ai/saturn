@@ -67,6 +67,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 
 ### Fixed
 
+- **Ctrl-C stops the turn, not just the screen.** The model kept generating in the background
+  after a cancel — one cancelled answer ran 23 seconds more, slowing the next question — and
+  the first Ctrl-C could hang until it finished. Now the model stops at its next token, the
+  rest of a batch of tool calls never runs, and the trace keeps a late call under its own run.
+- **A search that found nothing is no longer listed under Sources.** "No relevant documents
+  found" showed up as a "knowledge base passage", and an empty mail or file search was cited
+  next to the read the answer actually came from.
+- **Your first knowledge-base search no longer slows the next step by 10–15 seconds.** The
+  embedder now loads with a window sized to its chunks instead of Ollama's 32k default: half
+  the memory (4.6 GiB instead of 8.9 for qwen3-embedding:8b), so loading it no longer pushes
+  the chat model out of memory and makes it re-read the whole conversation.
+- **Texts show who they are from.** A one-to-one conversation in `read_messages` showed a
+  phone number even for someone in your Contacts ("+1 (858) 753-5009"); it now shows their
+  name beside the number.
+- **Two Saturn processes no longer clobber each other's saved files.** Every durable file
+  Saturn writes (your memory, the gate policy, the pending review queue, a saved skill, the
+  session autosave) now goes through a temp file of its own before it is renamed into place.
+  One shared temp name let a REPL and a headless turn writing at the same moment install each
+  other's half-written text.
+- **A bare `g` is no group chat's ref.** `read_messages` matched a chat ref by its tail, and a
+  one-character ref has an empty tail that matched every group. A ref now has to be one
+  `find_group_chats` could have handed out.
+- **The loop benchmark keeps out of your memory.** Its `remember` calls and auto-learned
+  facts landed in your real memory file, and your facts rode every benchmark prompt; a run
+  now plants a throwaway memory file and takes it away after, as the trust benchmark's memory
+  tasks already did. Its approver also no longer takes a `cat` at a path for the real one,
+  the weekday task is graded against the day the run reaches it, a one-character chat ref
+  and a number with no digits no longer grade as matches, and the verdict line shows a
+  model's control characters instead of printing them live. A declined call the model asks
+  for again now counts as a hygiene bounce.
 - **`/policy risk` says what a refused tier change is about.** Lowering the tier of
   `create_skill`, `add_document` or `remove_document` is refused with "Saving a skill always
   asks" (or "Adding a document…"), not "A send always asks" — the wording comes from the one

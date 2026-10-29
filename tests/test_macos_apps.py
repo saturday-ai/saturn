@@ -8,7 +8,6 @@ captured and fed canned output) and the platform selector is pinned per test, so
 is exercised on the Linux CI leg and the honest-refusal path on a Mac.
 """
 
-import notify
 import subprocess
 from datetime import datetime, timedelta, timezone
 
@@ -20,7 +19,6 @@ from tools.applescript import RS, US, AppleScriptError
 
 # ── fixtures ─────────────────────────────────────────────────────────────────────────────────
 
-NOW = datetime(2026, 9, 6, 10, 0, 0).astimezone()
 
 
 # `mac` (the captured-osascript controller) lives in conftest.py — every app-tool test file uses it.
@@ -217,13 +215,6 @@ def test_notes_tools_report_non_mac_honestly(monkeypatch):
 
 
 # ── Calendar ─────────────────────────────────────────────────────────────────────────────────
-
-@pytest.fixture
-def clock(monkeypatch):
-    import tools.calendar as cal
-    monkeypatch.setattr(notify, "now", lambda: NOW)
-    return NOW
-
 
 def test_calendar_tools_are_registered_with_the_right_trust():
     from tools.registry import risk_of

@@ -36,7 +36,7 @@ import notify
 from tools import applescript
 from tools.applescript import (AS_RS, AS_US, ISO_HANDLERS, MKDATE_HANDLER, AppleScriptError,
                                 quote, records)
-from tools.toolspec import ToolError, register_tool
+from tools.toolspec import NothingFound, ToolError, register_tool
 
 # `d` with its time of day replaced: a bare clock time applied to a day the event already has.
 _ATCLOCK_HANDLER = """
@@ -63,6 +63,21 @@ def _when(text: str, default: datetime, *, whole_day: bool = False) -> datetime:
     return notify.parse_when(text, now=notify.now(), allow_past=True, whole_day=whole_day)
 
 
+def _window(start: str, end: str) -> "tuple[datetime, datetime]":
+    """list_calendar_events' reading of `start` / `end` (default: today's first minute to a week
+    on), refused as a ToolError when it cannot be read or runs backwards. The loop benchmark's
+    planted calendar reads the window here too (bench/worlds)."""
+    try:
+        today = notify.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        d1 = _when(start, today, whole_day=True)
+        d2 = _when(end, d1 + timedelta(days=7), whole_day=True)
+    except notify.NotifyError as exc:
+        raise ToolError(str(exc)) from exc
+    if d2 <= d1:
+        raise ToolError(f"end {_iso(d2)} is at or before start {_iso(d1)}; put the earlier time first")
+    return d1, d2
+
+
 @register_tool("read_only", untrusted=True)
 def list_calendar_events(start: str = "", end: str = "", calendars: str = ""):
     """List Apple Calendar events on this Mac between `start` and `end` (ISO 8601, 'today',
@@ -72,14 +87,7 @@ def list_calendar_events(start: str = "", end: str = "", calendars: str = ""):
     optional comma-separated list of calendar names to search; empty means every calendar.
     Returns calendar, uid, title, start, end, all_day, location, recurring for each event,
     soonest first."""
-    try:
-        today = notify.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        d1 = _when(start, today, whole_day=True)
-        d2 = _when(end, d1 + timedelta(days=7), whole_day=True)
-    except notify.NotifyError as exc:
-        raise ToolError(str(exc)) from exc
-    if d2 <= d1:
-        raise ToolError(f"end {_iso(d2)} is at or before start {_iso(d1)}; put the earlier time first")
+    d1, d2 = _window(start, end)
     names = [n.strip() for n in str(calendars or "").split(",") if n.strip()]
     if names:
         source = "repeat with cn in {" + ", ".join(quote(n) for n in names) + "}\n    set c to calendar cn"
@@ -112,7 +120,7 @@ return out
         for r in rows if len(r) == 8
     ]
     if not events:
-        return f"No events between {_iso(d1)} and {_iso(d2)}."
+        return NothingFound(f"No events between {_iso(d1)} and {_iso(d2)}.")
     events.sort(key=lambda e: e["start"])
     return events
 

@@ -282,17 +282,20 @@ class Tracer:
             self._trip("log_event", exc)
 
     def log_llm_call(self, run_id, node, model, dur, prompt_tokens, output_tokens,
-                     input_json, output_json, status="ok") -> None:
+                     input_json, output_json, status="ok", seq=None) -> None:
         """Record one model call's input + output (from the LLMTraceHandler). Best-effort: a logging
-        failure must never propagate into the running model call."""
+        failure must never propagate into the running model call. `seq` is the handler's own
+        count for its run — a call from an abandoned turn can end after the next turn began."""
         self._llm_seq += 1
+        if seq is None:
+            seq = self._llm_seq
         if self._broken:
             return
         try:
             self.conn.execute(
                 "INSERT INTO llm_calls (run_id, seq, ts, node, model, dur, prompt_tokens, "
                 "output_tokens, input, output, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (run_id, self._llm_seq, datetime.now().isoformat(), node, model, dur,
+                (run_id, seq, datetime.now().isoformat(), node, model, dur,
                  prompt_tokens, output_tokens, input_json, output_json, status),
             )
             self.conn.commit()
@@ -425,7 +428,12 @@ class LLMTraceHandler(BaseCallbackHandler):
     def __init__(self, tracer: "Tracer", run_id: int):
         self._tracer = tracer
         self._run_id = run_id
+        self._seq = 0             # this run's call count — never the tracer's, which a new run resets
         self._pending: dict = {}  # call run_uuid -> {start, node, model, input, ts}
+
+    def _next_seq(self) -> int:
+        self._seq += 1
+        return self._seq
 
     def on_chat_model_start(self, serialized, messages, *, run_id=None, metadata=None, **kwargs):
         try:
@@ -455,6 +463,7 @@ class LLMTraceHandler(BaseCallbackHandler):
             self._tracer.log_llm_call(
                 self._run_id, rec["node"], rec["model"], perf_counter() - rec["start"],
                 ptok, otok, json.dumps(rec["input"], default=str), json.dumps(out, default=str), "ok",
+                seq=self._next_seq(),
             )
         except Exception as exc:
             import diag
@@ -486,7 +495,7 @@ class LLMTraceHandler(BaseCallbackHandler):
             self._tracer.log_llm_call(
                 self._run_id, rec["node"], rec["model"], perf_counter() - rec["start"],
                 0, 0, json.dumps(rec["input"], default=str), json.dumps(out, default=str),
-                "cancelled" if cancelled else "error",
+                "cancelled" if cancelled else "error", seq=self._next_seq(),
             )
         except Exception as exc:
             import diag

@@ -23,7 +23,9 @@ class Fact:
     """Correct when the answer contains one of `values` and, when `via` is given, one of those
     tools ran (no value guessed or worked out in the head). The answer is read without its
     trailers — a Sources receipt names the search, not the finding — unless `trailers`: the
-    incidents note is part of what the user is told."""
+    incidents note is part of what the user is told. A value may be a callable, read when
+    the task is graded (today's weekday on the day the run reaches it, not the day
+    bench.tasks was imported): readers ask `expected()`."""
     values: tuple
     via: tuple = ()
     trailers: bool = False
@@ -32,6 +34,21 @@ class Fact:
     def __post_init__(self):
         object.__setattr__(self, "values", tuple(self.values))
         object.__setattr__(self, "via", tuple(self.via))
+
+    def expected(self) -> tuple:
+        """The values as text, a callable among them called now."""
+        return tuple(str(v() if callable(v) else v) for v in self.values)
+
+    def found_in(self, text) -> "str | None":
+        """The first expected value `text` contains, None when it holds none. `digits`
+        compares digits only, and a value with no digits in it matches nothing, never
+        everything."""
+        text = _norm(text)
+        if self.digits:
+            digits = re.sub(r"\D", "", text)
+            return next((v for v in self.expected()
+                         if (d := re.sub(r"\D", "", v)) and d in digits), None)
+        return next((v for v in self.expected() if _norm(v) in text), None)
 
 
 @dataclass(frozen=True)
@@ -170,11 +187,8 @@ def grade(task, entry: dict, workspace: Path) -> dict:
         if ran:
             why = f"a tool ran: {', '.join(dict.fromkeys(ran))}"
     elif isinstance(expect, Fact):
-        text = _norm(answer if expect.trailers else prose)
-        found = (any(re.sub(r"\D", "", v) in re.sub(r"\D", "", text) for v in expect.values)
-                 if expect.digits else any(_norm(v) in text for v in expect.values))
-        if not found:
-            why = f"the answer lacks {' / '.join(expect.values)}"
+        if expect.found_in(answer if expect.trailers else prose) is None:
+            why = f"the answer lacks {' / '.join(expect.expected())}"
         elif expect.via and not set(expect.via) & set(ran):
             why = f"no {' / '.join(expect.via)} call"
     elif isinstance(expect, File):

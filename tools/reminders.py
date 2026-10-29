@@ -27,7 +27,7 @@ from tools import applescript
 from tools.applescript import (AS_GS, AS_RS, AS_US, GS, ISO_HANDLERS, MKDATE_HANDLER,
                                AppleScriptError, mkdate, quote, records)
 from tools.applescript import local_iso as _iso
-from tools.toolspec import ToolError, register_tool
+from tools.toolspec import NothingFound, ToolError, register_tool
 
 _ID_PREFIX = "x-apple-reminder://"
 _HANDLERS = ISO_HANDLERS + MKDATE_HANDLER
@@ -93,7 +93,7 @@ return out
             item["flagged"] = True
         items.append(item)
     if not items:
-        return f"No open reminders in {name}." if name else "No open reminders."
+        return NothingFound(f"No open reminders in {name}." if name else "No open reminders.")
     items.sort(key=lambda i: (0, i["due"]) if "due" in i else (1, ""))
     return items
 

@@ -182,6 +182,22 @@ def test_get_embeddings_unwrapped_on_loopback(monkeypatch):
     assert isinstance(llms.get_embeddings(), llms._EmbeddingsBoundary)
 
 
+def test_the_embedder_asks_for_a_window_its_chunks_need_not_the_daemon_default(monkeypatch):
+    """Unset, Ollama loads the embedder with its own default window (32,768 on a big Mac):
+    qwen3-embedding:8b then needs 8.9 GiB, and loading it evicted the chat model, whose next
+    call re-read the whole prompt (2026-10-15: 16.6 s instead of ~1.5). A chunk is
+    `rag.chunk_size` characters; the window is twice that, so no chunk is ever truncated."""
+    from config import get_config
+    from core import llms
+
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    assert llms.get_embeddings().num_ctx == 2048
+    monkeypatch.setitem(get_config()._data.setdefault("rag", {}), "chunk_size", 3000)
+    assert llms.get_embeddings().num_ctx == 6000
+    monkeypatch.setenv("OLLAMA_HOST", "http://192.168.1.50:11434")
+    assert llms.get_embeddings().num_ctx == 6000  # through the boundary wrapper too
+
+
 # ── network-boundary byte accounting ──────────────────────────────────────────────────────────
 
 

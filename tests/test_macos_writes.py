@@ -7,21 +7,9 @@ Offline like tests/test_macos_apps.py: osascript never runs (conftest's `mac` co
 captures the script and feeds canned output).
 """
 
-import notify
-from datetime import datetime
-
 import pytest
 
 from tools.applescript import GS, RS, US
-
-NOW = datetime(2026, 9, 6, 10, 0, 0).astimezone()
-
-
-@pytest.fixture
-def clock(monkeypatch):
-    import tools.calendar as cal
-    monkeypatch.setattr(notify, "now", lambda: NOW)
-    return NOW
 
 
 def _tool(name):
@@ -183,7 +171,7 @@ def test_update_event_bare_clock_end_follows_the_start(mac, clock):
     assert "set d2 to my atclock(d1, 55800)" in s
     assert "if d2 ≤ d1 then set d2 to d2 + (1 * days)" in s    # 23:00 to 01:00 ends the next day
     # an end alone moves on the event's own end day, and never to before its start
-    mac.reply(f"order\n")
+    mac.reply("order\n")
     out = _err("update_calendar_event", {"uid": "u", "calendar": "Work", "end": "9:00"})
     assert "at or before" in out
     s = mac.script()

@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from tools import applescript
 from tools.applescript import AS_RS, AS_US, ISO_HANDLERS, AppleScriptError, quote, records
-from tools.toolspec import ToolError, register_tool
+from tools.toolspec import NothingFound, ToolError, register_tool
 
 # A killed osascript does NOT cancel its Apple event: Mail keeps grinding through it on its main
 # thread, serially, and every retry queues behind it (observed 2026-09-06 — six timed-out queries
@@ -107,8 +107,8 @@ return out
     if unread_only:
         rows = [m for m in rows if m["unread"]]
         if not rows:
-            return f"No unread messages among the newest {_WINDOW} in {mailbox}."
-    return rows[:limit] if rows else f"No messages in {mailbox}."
+            return NothingFound(f"No unread messages among the newest {_WINDOW} in {mailbox}.")
+    return rows[:limit] if rows else NothingFound(f"No messages in {mailbox}.")
 
 
 @register_tool("read_only", untrusted=True)
@@ -139,7 +139,7 @@ return out
     except AppleScriptError as exc:
         raise _error(exc, mailbox) from exc
     rows = _rows(out, mailbox)
-    return rows if rows else f"No messages match {q!r}."
+    return rows if rows else NothingFound(f"No messages match {q!r}.")
 
 
 @register_tool("read_only", untrusted=True)

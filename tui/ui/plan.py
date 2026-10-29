@@ -14,7 +14,7 @@ from ._base import (
 )
 
 
-def _plan_line(step: dict, *, show_tool: bool) -> "Text":
+def _plan_line(step: dict, *, show_tool: bool) -> Text:
     """One `│ ▸ 2  label  ::tool` plan row on the trace rail."""
     status = step.get("status", "pending")
     # An unknown status (a garbled/legacy record) renders as UNKNOWN — never guessed as pending.

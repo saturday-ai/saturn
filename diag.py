@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import tempfile
 from pathlib import Path
 
 from textutil import visible_controls
@@ -52,17 +53,21 @@ _logger: logging.Logger | None = None
 
 
 def atomic_write_text(path, text: str) -> None:
-    """Write `text` to `path` crash-safely: the parent folder is made, a sibling `<name>.tmp`
-    is written, then renamed over the target (os.replace — atomic on POSIX and Windows), so a
-    kill mid-write leaves the original whole, never truncated; a write that fails takes its
-    temp file with it. THE one home of the idiom for every durable file Saturn owns (memory,
-    the gate policy, a saved skill, the session autosave): a hand-rolled copy drifts on the
+    """Write `text` to `path` crash-safely: the parent folder is made, a temp file of this
+    write's own (`<name>.<random>.tmp` beside the target — two Saturn processes writing one
+    file never share it, so neither can install the other's half-written text) is written,
+    then renamed over the target (os.replace — atomic on POSIX and Windows), so a kill
+    mid-write leaves the original whole, never truncated; a write that fails takes its temp
+    file with it. THE one home of the idiom for every durable file Saturn owns (memory, the
+    gate policy, a saved skill, the session autosave): a hand-rolled copy drifts on the
     cleanup. Here because diag is the leaf every one of those writers may import."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
+    fd, name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    tmp = Path(name)
     try:
-        tmp.write_text(text, encoding="utf-8")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
         os.replace(tmp, path)
     except BaseException:
         tmp.unlink(missing_ok=True)

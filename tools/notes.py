@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from tools import applescript
 from tools.applescript import AS_GS, AS_RS, AS_US, GS, ISO_HANDLERS, quote, records
-from tools.toolspec import ToolError, register_tool
+from tools.toolspec import NothingFound, ToolError, register_tool
 
 _MAX_MATCHES = 200   # hard cap on records fetched before Python sorts and applies `limit`
 _TRASH = "Recently Deleted"   # deleted notes linger here for 30 days; search never lists them
@@ -62,7 +62,7 @@ return out
              for r in rows if len(r) == 4 and r[2] != _TRASH]
     notes.sort(key=lambda n: n["modified"], reverse=True)
     if not notes:
-        return f"No notes match {q!r}." if q else "No notes found."
+        return NothingFound(f"No notes match {q!r}." if q else "No notes found.")
     return notes[:limit]
 
 

@@ -139,6 +139,18 @@ def _no_live_usage(monkeypatch):
 
 
 @pytest.fixture
+def clock(monkeypatch):
+    """Pin the tools' clock (notify.now — what every date-reading tool measures against) to a
+    fixed Sunday morning, 2026-09-06 10:00 local, and return it."""
+    import notify
+    from datetime import datetime
+
+    now = datetime(2026, 9, 6, 10, 0, 0).astimezone()
+    monkeypatch.setattr(notify, "now", lambda: now)
+    return now
+
+
+@pytest.fixture
 def mac(monkeypatch):
     """Pin the platform to macOS and capture osascript invocations. Yields a controller whose
     `.calls` lists every argv and whose `.reply(stdout)` sets the next canned output."""

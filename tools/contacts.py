@@ -24,7 +24,7 @@ from __future__ import annotations
 from tools import applescript
 from tools.applescript import (AS_FS, AS_GS, AS_RS, AS_US, GS, ISO_HANDLERS, RS, pairs,
                                quote, records)
-from tools.toolspec import ToolError, register_tool
+from tools.toolspec import NothingFound, ToolError, register_tool
 
 _MAX = 25
 
@@ -50,8 +50,7 @@ def _label(raw: str) -> str:
 
 
 def _pairs(field: str) -> list[dict]:
-    return [{"label": _label(label), "value": value.strip()}
-            for label, value in pairs(field) if value.strip()]
+    return [{"label": _label(label), "value": value} for label, value in pairs(field) if value]
 
 
 def _birthday(iso: str) -> str:
@@ -123,11 +122,11 @@ def search_contacts(query: str, limit: int = 10):
         # name, with the result saying so — the user decides whether that is who they meant.
         close = _closest_names(q, _all_names(), limit)
         if not close:
-            return f"No contacts match {q!r}."
+            return NothingFound(f"No contacts match {q!r}.")
         picker = "\n  set ids to id of every person whose " + " or ".join(f"name is {quote(n)}" for n in close)
         people, total = _cards(_card_script(picker, limit), q)
         if not people:
-            return f"No contacts match {q!r}."
+            return NothingFound(f"No contacts match {q!r}.")
         return {"contacts": people,
                 "note": f"no contact is named {q!r}; these are the closest names — check with the "
                         "user before using one"}

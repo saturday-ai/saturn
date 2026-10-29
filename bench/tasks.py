@@ -69,7 +69,7 @@ TASKS: list[Task] = [
     _t("chat_about_tools", "chat", "core", "What can you do with my email?",
        Answers(), "opening the user's mail to answer a question ABOUT mail"),
     _t("date_weekday", "chat", "core", "What day of the week is it today?",
-       Fact([datetime.now().strftime("%A")]),
+       Fact([lambda: datetime.now().strftime("%A")]),    # read when graded: a run crosses midnight
        "a tool round for what the grounding's Now line already says",
        tools={"current_time"}, ideal=[("current_time", {})]),
     _t("skill_chat", "chat", "skills",

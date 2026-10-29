@@ -376,7 +376,7 @@ def test_the_off_answer_comes_before_every_other_check(rebinds):
     off = agent.TOOLKIT_OFF_TEXT.format(name="send_message", key="messages")
     invented = _call("send_message", {"text": "hi", "to": "+15550001"})
 
-    assert agent._hygiene(invented, [], provenance=("", ""))[1].content == off
+    assert agent._hygiene(invented, [], provenance=lambda: ("", ""))[1].content == off
     assert agent._hygiene(invented, [], malformed=True)[1].content == off
 
 
@@ -773,7 +773,7 @@ def test_a_loop_task_that_needs_an_off_toolkit_is_skipped(rebinds):
     assert skipped_for(task("chat_rewrite")) is None
 
 
-def test_a_task_that_must_not_use_the_tool_still_runs(rebinds):
+def test_a_task_in_an_off_toolkit_is_skipped_even_when_it_needs_no_tool(rebinds):
     from bench.loop import skipped_for
     from bench.tasks import task
     from tools import registry

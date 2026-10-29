@@ -5,22 +5,11 @@ Contacts (`search_contacts`) and Reminders (`list_reminders` / `create_reminder`
 Offline: osascript never runs (conftest's `mac` controller).
 """
 
-import notify
-from datetime import datetime
-
 import pytest
 
 from tools.applescript import RS, US
 
-NOW = datetime(2026, 9, 6, 10, 0, 0).astimezone()
 FS, GS = "\x1c", "\x1d"
-
-
-@pytest.fixture
-def clock(monkeypatch):
-    import tools.reminders as rem
-    monkeypatch.setattr(notify, "now", lambda: NOW)
-    return NOW
 
 
 def _tool(name):

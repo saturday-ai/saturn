@@ -17,7 +17,7 @@ for searching a large memory or confirming a specific detail.
 from pathlib import Path
 
 from textutil import doc_source_label
-from tools.toolspec import ToolError, human_approved, register_tool, user_stated
+from tools.toolspec import NothingFound, ToolError, human_approved, register_tool, user_stated
 
 from stores.memory_registry import SecretRefused, add_memory, search_memory
 
@@ -54,7 +54,7 @@ def search_knowledge_base(query: str = ""):
     # on RAG queries).
     docs = get_vector_store().similarity_search(query, k=retrieval_k())
     if not docs:
-        return "No relevant documents found in the knowledge base."
+        return NothingFound("No relevant documents found in the knowledge base.")
     # textutil.doc_source_label — the one builder of the `[source: …]` marker the answer's
     # Sources labels (core/sources.py) parse back (parse_doc_sources); construction and parsing can't drift.
     return "\n\n".join(
@@ -250,5 +250,5 @@ def recall(query: str = ""):
     for a fact that did not load or to confirm a specific detail."""
     facts = search_memory(query)
     if not facts:
-        return "No matching facts in persistent memory."
+        return NothingFound("No matching facts in persistent memory.")
     return "\n".join(f"- {f}" for f in facts) + "\n" + RECALL_NOTE

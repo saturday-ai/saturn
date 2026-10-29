@@ -36,6 +36,7 @@ template's system section, so the catalog is part of that cached prefix.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import time
@@ -59,7 +60,7 @@ from core.llms import (extract_prompt_tokens, extract_tok_per_sec, generate, get
 from core.llms import stream as llm_stream
 from core import think as _think
 from core.messages import agent_sys_msg
-from core.pause import get_pause_controller
+from core.pause import check_cancelled, get_pause_controller
 from core.provenance import is_typed
 from core.state import (STEER_PREFIX, AgentState, call_status, grounding_parts,
                         issuing_message)
@@ -301,6 +302,7 @@ def _generate(llm_input: list, *, tools: bool, think: bool = False) -> AIMessage
     chunks = llm_stream(runnable, llm_input, tag=model_tag(), **kwargs)
     try:
         for chunk in chunks:
+            check_cancelled()  # an abandoned turn's call stops here, on a worker thread (core/pause)
             seen.append(chunk)
             reasoning = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content")
             answering = bool(chunk.content) or bool(getattr(chunk, "tool_call_chunks", None))
@@ -554,11 +556,12 @@ def _group_missing(this_turn: list, rounds: list) -> bool:
 
 
 def _hygiene(call: dict, rounds: list, malformed: bool = False,
-             provenance: "tuple | None" = None,
+             provenance=None,
              group_missing: bool = False) -> "tuple[dict, ToolMessage | None]":
     """The corrected call, or the ToolMessage that answers it instead of running it.
-    `provenance` is (what the user typed, what else entered the conversation) for the handle
-    check — a recipient the model composed is refused here, before any gate sees it."""
+    `provenance` is a no-argument callable returning (what the user typed, what else entered
+    the conversation), asked only by the handle and chat holds — a recipient the model composed
+    is refused here, before any gate sees it."""
     from tools.messages import route_target
     from tools.registry import is_off, tools_by_name
     from tools.toolspec import toolkit_of
@@ -611,12 +614,12 @@ def _hygiene(call: dict, rounds: list, malformed: bool = False,
     handle_arg = quarantine.HANDLE_ARGS.get(name)
     if handle_arg and provenance is not None:
         handle = str(args.get(handle_arg) or "").strip()
-        if quarantine.handle_hold(handle, *provenance[:2]):
+        if quarantine.handle_hold(handle, *provenance()[:2]):
             return refuse(UNKNOWN_HANDLE_TEXT.format(handle=handle))
     chat_arg = quarantine.CHAT_ARGS.get(name)
     if chat_arg and provenance is not None:
         ref = str(args.get(chat_arg) or "").strip()
-        if quarantine.chat_hold(ref, *provenance[:2]):
+        if quarantine.chat_hold(ref, *provenance()[:2]):
             return refuse(UNKNOWN_CHAT_TEXT.format(ref=ref))
     if group_missing and name == "send_message" and str(args.get("to") or "").strip():
         return refuse(NO_GROUP_SEND_TEXT)
@@ -808,10 +811,8 @@ def agent_node(state: AgentState):
 
     # 5. hygiene
     rounds = _rounds(this_turn)
-    # Read only for the handle and chat holds (it joins every observation of the turn).
-    prov = (provenance({**state, "messages": messages + new})
-            if any(c.get("name") in quarantine.HANDLE_ARGS or c.get("name") in quarantine.CHAT_ARGS
-                   for c in calls) else None)
+    # Read once, and only if a hold asks: it joins every observation of the turn.
+    prov = functools.cache(lambda: provenance({**state, "messages": messages + new}))
     group_missing = _group_missing(this_turn, rounds)
     kept, replies = [], []
     for call in calls:

@@ -76,6 +76,35 @@ def test_a_failed_call_is_not_a_source(monkeypatch):
     assert out["tool_results"] == ["read_file(a=1) -> hello"]
 
 
+def test_a_search_that_found_nothing_is_not_a_source(monkeypatch):
+    """A search that came back empty gathered nothing: "No relevant documents found" must not
+    be cited as a "knowledge base passage", nor "No messages match" as a read. The tool says so
+    by returning toolspec.NothingFound; the call still completed (status `done`)."""
+    from tools.toolspec import NothingFound
+
+    out = _run(monkeypatch, "search_knowledge_base",
+               _Returns(NothingFound("No relevant documents found in the knowledge base.")))
+    assert out["documents_retrieved"] == []
+    assert out["messages"][0].additional_kwargs["saturn_status"] == "done"
+    out = _run(monkeypatch, "search_mail", _Returns(NothingFound("No messages match 'x'.")))
+    assert out["tool_results"] == []
+    assert out["messages"][0].content == "No messages match 'x'."
+
+
+def test_the_app_and_search_tools_say_when_they_found_nothing(monkeypatch, isolated_paths):
+    """Each reader's empty answer is a NothingFound, so the Sources rule can see it."""
+    from tools import knowledge
+    from tools.toolspec import NothingFound
+
+    class _Empty:
+        def similarity_search(self, *_a, **_k):
+            return []
+
+    import stores.rag as rag
+    monkeypatch.setattr(rag, "get_vector_store", lambda: _Empty())
+    assert isinstance(knowledge.search_knowledge_base.invoke({"query": "bhumi"}), NothingFound)
+
+
 def test_an_airgap_blocked_call_is_not_a_source(monkeypatch, isolated_paths):
     from config import get_config
     from trust import egress

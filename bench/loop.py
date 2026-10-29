@@ -5,14 +5,21 @@ caller passes (benchmark.run_query) — everything here runs offline in tests.""
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
 from bench.expect import Fact, Gate, grade
 from bench.tasks import HARNESS, TASKS
-from bench.worlds import apps_world, fixtures, messaging_world
+from bench.worlds import apps_world, fixtures, isolated_memory, messaging_world
+from textutil import visible_controls
 
 VERSION = 2
+
+
+def toolkit_keys(spec: "str | None") -> list:
+    """The toolkit names in a comma list (`--toolkit`, `--off`), lower-cased."""
+    return [k.strip().lower() for k in str(spec or "").split(",") if k.strip()]
 
 
 def select(tasks: list, spec: "str | None") -> list:
@@ -20,7 +27,7 @@ def select(tasks: list, spec: "str | None") -> list:
     None or empty: every task."""
     from tools.toolspec import TOOLKITS
 
-    keys = [k.strip().lower() for k in str(spec or "").split(",") if k.strip()]
+    keys = toolkit_keys(spec)
     if not keys:
         return tasks
     for key in keys:
@@ -51,43 +58,35 @@ def skipped_for(task) -> "str | None":
     return None
 
 
-class _forced:
+@contextmanager
+def _forced(setup):
     """Apply a task's budget and toolkits-off for its turn; undo both after."""
+    from config import get_config
+    from tools import registry
 
-    def __init__(self, setup):
-        self.setup = setup
-
-    def __enter__(self):
-        from config import get_config
-        from tools import registry
-
-        runtime = get_config()._data.setdefault("runtime", {})
-        self._had_budget = "max_iterations" in runtime
-        self._budget = runtime.get("max_iterations")
-        if self.setup.budget is not None:
-            runtime["max_iterations"] = self.setup.budget
-        self._turned_off = registry.set_toolkits(list(self.setup.off), False) if self.setup.off else []
-        return self
-
-    def __exit__(self, *exc):
-        from config import get_config
-        from tools import registry
-
-        runtime = get_config()._data.setdefault("runtime", {})
-        if self._had_budget:
-            runtime["max_iterations"] = self._budget
+    runtime = get_config()._data.setdefault("runtime", {})
+    had_budget, budget = "max_iterations" in runtime, runtime.get("max_iterations")
+    if setup.budget is not None:
+        runtime["max_iterations"] = setup.budget
+    turned_off = registry.set_toolkits(list(setup.off), False) if setup.off else []
+    try:
+        yield
+    finally:
+        if had_budget:
+            runtime["max_iterations"] = budget
         else:
             runtime.pop("max_iterations", None)
-        if self._turned_off:
-            registry.set_toolkits(self._turned_off, True)
-        return False
+        if turned_off:
+            registry.set_toolkits(turned_off, True)
 
 
 def run(graph, tasks: list, query) -> dict:
     """Run and grade `tasks`, each from freshly planted files, inside the planted messaging
-    world and apps (nothing reaches the user's apps or the network). `query(graph, text, decline=, steer=)` is run_query. Returns {results, summary}."""
+    world and apps, over the run's own memory file (nothing reaches the user's apps, memory
+    or the network). `query(graph, text, decline=, steer=)` is run_query. Returns
+    {results, summary}."""
     results = []
-    with fixtures() as planted, messaging_world(), apps_world():
+    with fixtures() as planted, messaging_world(), apps_world(), isolated_memory():
         for i, task in enumerate(tasks, 1):
             off = skipped_for(task)
             if off:
@@ -107,18 +106,23 @@ def run(graph, tasks: list, query) -> dict:
                       "think": entry.get("think", []),
                       "response": str(entry.get("response") or entry.get("error") or "")[:400]}
             results.append(result)
-            print(f"  [{i:2d}/{len(tasks)}] {task.id:<24} {_verdict(result)}  "
-                  f"({g['efficiency'].get('passes')} passes, {g['efficiency'].get('latency_s')}s, "
-                  f"tools={','.join(result['tools_called']) or '-'})")
+            # a wrong_target names the model's own argument text: never a bare print
+            print(visible_controls(
+                f"  [{i:2d}/{len(tasks)}] {task.id:<24} {_verdict(result)}  "
+                f"({g['efficiency'].get('passes')} passes, {g['efficiency'].get('latency_s')}s, "
+                f"tools={','.join(result['tools_called']) or '-'})"))
     return {"results": results, "summary": summarize(results, TASKS)}
+
+
+def _failure(r: dict) -> str:
+    """What failed a run: its safety faults, or else why it was wrong."""
+    return ", ".join(r["safety"]) if r.get("safety") else str(r.get("why"))
 
 
 def _verdict(r: dict) -> str:
     if r["passed"]:
         return "PASS"
-    if r["safety"]:
-        return "UNSAFE " + ", ".join(r["safety"])
-    return "WRONG  " + str(r["why"])
+    return ("UNSAFE " if r["safety"] else "WRONG  ") + _failure(r)
 
 
 def _group(rows: list) -> dict:
@@ -152,8 +156,7 @@ def summarize(results: list, suite: list) -> dict:
         "passed": sum(1 for r in ran if r["passed"]),
         "correct": sum(1 for r in ran if r["correct"]),
         "safety": {r["id"]: r["safety"] for r in ran if r["safety"]},
-        "failed": {r["id"]: (", ".join(r["safety"]) if r["safety"] else r["why"])
-                   for r in ran if not r["passed"]},
+        "failed": {r["id"]: _failure(r) for r in ran if not r["passed"]},
         "skipped": skipped,
         "skipped_toolkits": sorted({r["skipped"] for r in results if r.get("skipped")}),
         "by_shape": {k: _group(v) for k, v in by_shape.items()},
@@ -216,7 +219,7 @@ def report_path(log_dir: Path, tier: str, label: str, run: int = 0, runs: int = 
 def _status(r: dict) -> str:
     if r.get("passed"):
         return "pass"
-    return ("unsafe: " + ", ".join(r["safety"])) if r.get("safety") else str(r.get("why"))
+    return ("unsafe: " if r.get("safety") else "") + _failure(r)
 
 
 def compare(a: dict, b: dict) -> list:

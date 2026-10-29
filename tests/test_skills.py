@@ -702,8 +702,6 @@ def test_a_before_write_hook_can_refuse_a_skill(home, approved, monkeypatch):
 
 
 def test_a_failed_write_is_an_error_not_a_half_file(home, approved, monkeypatch):
-    from tools import skills as skill_tools
-
     _skill(home / "skills", "standup", OLD_STANDUP)
 
     def disk_full(src, dst):

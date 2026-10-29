@@ -81,6 +81,12 @@ class ToolError(Exception):
     user. The message is written for the model; the node hands it back as the observation."""
 
 
+class NothingFound(str):
+    """A search or read that worked and found nothing ("No contacts match 'x'.") — returned, not
+    raised: the call completed (status `done`), but it gathered nothing, so the tools node does
+    not make it a source."""
+
+
 # Whether the call now executing was approved by a human at the gate — set by the tools node
 # around each call from state["gate_events"], read by a tool whose record depends on it
 # (`remember` stamps a fact by=user only for a call a person said yes to). False anywhere else:

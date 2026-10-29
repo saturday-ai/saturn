@@ -306,8 +306,9 @@ def history(tmp_path, monkeypatch):
     db.close()
     monkeypatch.setattr(applescript, "_platform", lambda: "darwin")
     monkeypatch.setattr(messages, "_db_path", lambda: path)
-    # The group names come from the Messages app; no test may ask the real one.
+    # The names come from the Messages app; no test may ask the real one.
     monkeypatch.setattr(messages, "_groups", lambda: [])
+    monkeypatch.setattr(messages, "_participant_names", lambda: [])
     return path
 
 
@@ -729,7 +730,7 @@ def test_read_messages_reads_one_whole_group_with_names(group_history):
 def test_every_listing_labels_a_group_row_so_the_model_can_follow_it(group_history):
     out = _tool("read_messages").invoke({})
     assert out[0]["chat"] == f"{group_history} · Dinner club" and out[0]["group"] is True
-    assert out[2]["chat"] == "+15550102000" and "group" not in out[2]       # a 1:1 row is unchanged
+    assert out[2]["chat"] == "+15550102000 · Sam Lee" and "group" not in out[2]   # a 1:1 row: no ref
 
 
 def test_an_unnamed_group_is_labelled_by_its_people(history, monkeypatch):
@@ -808,6 +809,30 @@ def test_group_rows_are_named_however_the_two_sources_write_a_number(history, mo
     assert out[0]["from"] == "Sam Lee"
 
 
+def test_one_to_one_rows_are_named_too(history, monkeypatch):
+    """2026-10-15, runs 87 and 91: a summary of recent texts said "+1 (858) 753-5009" for a
+    person in Contacts — names were looked up only when the rows held a group message. The
+    number stays in the row: it is what contact= and send_message take."""
+    from tools import messages
+
+    lookups = []
+    monkeypatch.setattr(messages, "_participant_names",
+                        lambda: lookups.append(1) or [("(555) 010-2000", "Sam Lee")])
+    out = _tool("read_messages").invoke({"contact": "+15550102000"})
+    assert [m["from"] for m in out] == ["me", "Sam Lee"]
+    assert {m["chat"] for m in out} == {"+15550102000 · Sam Lee"}
+    assert lookups == [1]   # one bulk listing per call, never one per row
+
+
+def test_the_participant_listing_reads_every_name_messages_has(mac):
+    from tools import messages
+
+    mac.reply(f"+15550102000{US}Sam Lee{RS}jonah@example.com{US}{RS}")
+    assert messages._participant_names() == [("+15550102000", "Sam Lee")]
+    mac.returncode, mac.stderr = 1, "Not authorized to send Apple events to Messages. (-1743)"
+    assert messages._participant_names() == []   # soft: the rows keep their numbers
+
+
 def test_the_chat_hold_and_the_tool_read_a_ref_by_one_pattern():
     from tools import messages
 
@@ -856,3 +881,16 @@ def test_a_group_is_looked_up_once_for_the_prompt_not_again_when_the_human_answe
     msgs[-1] = AIMessage(content="", tool_calls=[{**send, "id": "c3"}])
     approval_mod.approval_node(state)
     assert len(lookups) == 2
+
+
+def test_a_ref_matches_a_chat_only_in_its_whole_form():
+    """`g` alone, or anything shorter than a ref find_group_chats hands out, is no chat's ref:
+    with an empty tail every chat matched it — in read_messages' prefix fallback and in the
+    loop benchmark's grader alike."""
+    from tools.messages import _matches_ref, chat_ref
+
+    ident = "any;+;chat111"
+    assert _matches_ref(ident, chat_ref(ident)) and _matches_ref(ident, chat_ref(ident, 8))
+    assert not _matches_ref(ident, chat_ref("any;+;chat222"))
+    assert not _matches_ref(ident, "g") and not _matches_ref(ident, "")
+    assert not _matches_ref(ident, "g12")

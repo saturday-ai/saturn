@@ -17,8 +17,9 @@ from trust import egress
 from trust import quarantine
 from tools.registry import RETRIEVAL_TOOLS, is_action, tools_by_name
 from tools.planning import PLAN_TOOL, to_plan
-from tools.toolspec import _HUMAN_APPROVED, _USER_STATED, ToolError
+from tools.toolspec import _HUMAN_APPROVED, _USER_STATED, NothingFound, ToolError
 from core import auto_memory
+from core.pause import check_cancelled
 from core.state import AgentState, issuing_message
 from textutil import CALL_RESULT_SEP, clip, fmt_call, head_tail, visible_controls_n
 
@@ -173,6 +174,7 @@ def tool_node(state: AgentState):
     plan_update = None
 
     for tool_call in pending_calls:
+        check_cancelled()  # Ctrl-C: the rest of the batch never runs (core/pause.turn_scope)
         name = tool_call["name"]
         args = tool_call["args"]
 
@@ -217,6 +219,7 @@ def tool_node(state: AgentState):
         # clamp, quarantine, state, the trace, the model, the rail preview): an untrusted page
         # or file must not reach the terminal as a live escape sequence, and the record stays
         # safe to replay (textutil.visible_controls).
+        found_nothing = isinstance(observation, NothingFound)
         observation, n_controls = visible_controls_n(str(observation))
         # Clamp what flows back into the model (ToolMessage + paired tool_results) so one large
         # result can't overflow the context window; the UI preview is derived from the same
@@ -263,7 +266,8 @@ def tool_node(state: AgentState):
         )
         tools_called.append(name)
         # What the answer could draw on — the Sources receipt, /trace source and /trace why
-        # number these (core/sources.py). Only a call that COMPLETED and returns material: a
+        # number these (core/sources.py). Only a call that COMPLETED and returned material (not a
+        # NothingFound — an empty search gathered nothing): a
         # failed or air-gap-blocked call informed nothing (it is in the incidents note), and a
         # tool declared side_effecting (write_file, remember, schedule_notification) returns a
         # confirmation of what it changed, not something to cite — as does a destructive one
@@ -272,8 +276,8 @@ def tool_node(state: AgentState):
         # results go to documents_retrieved, every other tool's to tool_results paired with
         # its call — keeping retrieval OUT of tool_results keeps a passage from being cited twice.
         action = is_action(name)
-        if call_status != "done" or action:
-            pass
+        if call_status != "done" or action or found_nothing:
+            pass  # a search that found nothing (toolspec.NothingFound) gathered nothing
         elif name in RETRIEVAL_TOOLS:
             documents_retrieved.append(clamped)
         elif name == PLAN_TOOL:
@@ -289,7 +293,7 @@ def tool_node(state: AgentState):
             "result": _preview(observation),
             "dur": dur,
             "ok": ok,
-            "pass": state.get("iteration"),  # the agent pass that issued it (benchmark ordering)
+            "pass": state.get("iteration"),  # the agent pass that issued it
         }
         if q_kinds:
             event["quarantine"] = q_kinds

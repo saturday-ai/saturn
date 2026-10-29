@@ -314,7 +314,6 @@ def test_tool_is_side_effecting():
 
 
 def test_tool_schedules_and_reports_the_resolved_time(mac_backend, monkeypatch):
-    import tools.notify as tool_mod
     from tools.registry import tools_by_name
 
     monkeypatch.setattr(notify, "now", lambda: NOW)
@@ -329,7 +328,6 @@ def test_tool_schedules_and_reports_the_resolved_time(mac_backend, monkeypatch):
 
 
 def test_tool_refuses_past_time_without_scheduling(mac_backend, monkeypatch):
-    import tools.notify as tool_mod
     from tools.registry import tools_by_name
 
     monkeypatch.setattr(notify, "now", lambda: NOW)

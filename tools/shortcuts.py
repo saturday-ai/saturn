@@ -23,7 +23,7 @@ import subprocess
 import tempfile
 
 from tools import applescript
-from tools.toolspec import ToolError, register_tool
+from tools.toolspec import NothingFound, ToolError, register_tool
 from trust import egress
 
 _LIST_TIMEOUT = 15.0
@@ -53,7 +53,7 @@ def list_shortcuts():
     """List the names of the user's Shortcuts on this Mac (the Shortcuts app). Call it before
     run_shortcut to find the one that does what the user asked ("lights off", "focus mode")."""
     found = names()
-    return found or "No shortcuts on this Mac."
+    return found or NothingFound("No shortcuts on this Mac.")
 
 
 def _read_and_remove(path: str) -> str:

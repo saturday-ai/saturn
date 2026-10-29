@@ -286,7 +286,8 @@ Define a tool in its own module under `tools/` with `@register_tool(risk=...)` f
 did not do its job RAISES `toolspec.ToolError` (never returns an error string): the tools node
 stamps it `error`, which makes the next pass a `recovery` step (core/think) and puts it in the answer's incidents note.
 Only a call that completed and gathered something is a source (`tool_results` /
-`documents_retrieved`): failed or blocked calls and `side_effecting` tools are not cited.
+`documents_retrieved`): failed or blocked calls and `side_effecting` tools are not cited, nor a
+search that found nothing — its tool returns `toolspec.NothingFound` (a `str`), not a bare string.
 `toolspec.human_approved()` tells a tool whether a person approved THIS call at the gate
 (`remember` stamps `by=user` only then, `by=inferred` otherwise).
 Unknown risk fails closed to `destructive`; `run_shell` is always `destructive`. MCP tools register as `mcp_<server>_<tool>`

@@ -164,8 +164,10 @@ def quote(text) -> str:
 
 def pairs(field: str) -> list[tuple[str, str]]:
     """The (label, value) pairs packed into one field — GS between pairs, FS inside each
-    (`AS_GS` / `AS_FS` in the script). An item with no FS is not a pair and is skipped."""
-    return [tuple(item.split(FS, 1)) for item in field.split(GS) if FS in item]
+    (`AS_GS` / `AS_FS` in the script), each half stripped. An item with no FS is not a pair
+    and is skipped."""
+    return [(a.strip(), b.strip()) for a, b in (item.split(FS, 1) for item in field.split(GS)
+                                                 if FS in item)]
 
 
 def records(output: str) -> list[list[str]]:

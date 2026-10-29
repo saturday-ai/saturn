@@ -560,20 +560,24 @@ def test_benchmark_is_the_trust_and_loop_benchmarks_only():
 # --- the loop benchmark (graded in bench/ since 2026-10-07: tests/test_bench.py) ----------
 
 def test_a_declined_call_is_not_a_hygiene_bounce():
-    """run_query counts a ToolMessage with no tool_events record as a call the agent answered
-    itself — except a gate decline (saturn_status skipped), which the messaging tasks expect."""
+    """run_query counts the calls the agent node answered itself (its ANSWERED_KEY stamp) —
+    not a call that ran, not a gate decline (which the messaging tasks expect) and not the
+    cap's refusal. A declined call asked AGAIN is the node's answer, and counts."""
     import benchmark
     from langchain.messages import ToolMessage
 
-    from nodes.agent import BUDGET_TEXT
+    from nodes.agent import ALREADY_DECLINED_TEXT, BUDGET_TEXT, _answer
 
-    msgs = [ToolMessage(content="ok", tool_call_id="c1", name="find_group_chats"),
+    call = lambda cid, name: {"id": cid, "name": name, "args": {}}
+    msgs = [ToolMessage(content="ok", tool_call_id="c1", name="find_group_chats",
+                        additional_kwargs={"saturn_status": "done"}),
             ToolMessage(content="declined", tool_call_id="c2", name="send_message",
                         additional_kwargs={"saturn_status": "skipped"}),
-            ToolMessage(content="Error: unknown tool", tool_call_id="c3", name="nope",
-                        additional_kwargs={"saturn_status": "error"}),
-            ToolMessage(content=BUDGET_TEXT, tool_call_id="c4", name="read_file")]
-    assert benchmark._hygiene_count(msgs, [{"name": "find_group_chats"}]) == 1
+            _answer(call("c3", "nope"), "Error: unknown tool"),
+            _answer(call("c4", "read_file"), BUDGET_TEXT)]
+    assert benchmark._hygiene_count(msgs) == 1
+    msgs.append(_answer(call("c5", "send_message"), ALREADY_DECLINED_TEXT, "skipped"))
+    assert benchmark._hygiene_count(msgs) == 2
 
 
 def test_the_messaging_world_is_planted_and_never_reaches_the_users_apps(monkeypatch):
