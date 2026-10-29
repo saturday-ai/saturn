@@ -72,6 +72,15 @@ def test_admission_flags_kinds(monkeypatch):
 # ── /docs add asks before admitting a flagged file ──────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _embedder_present(monkeypatch):
+    # /docs add asks the live daemon whether the embedder is pulled and offers to pull it; with a
+    # local Ollama up and the embedder absent, the stubbed "y" would start a real `ollama pull`.
+    from commands import knowledge
+
+    monkeypatch.setattr(knowledge, "_ensure_embedder", lambda: True)
+
+
 def _add_with(monkeypatch, tmp_path, reply: str):
     import stores.rag as rag
     import tui.ui as ui
