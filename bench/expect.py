@@ -48,7 +48,19 @@ class Fact:
             digits = re.sub(r"\D", "", text)
             return next((v for v in self.expected()
                          if (d := re.sub(r"\D", "", v)) and d in digits), None)
-        return next((v for v in self.expected() if _norm(v) in text), None)
+        return next((v for v in self.expected() if _number_safe(_norm(v)).search(text)), None)
+
+
+def _number_safe(value: str) -> "re.Pattern":
+    """`value` as a pattern that a longer number does not satisfy: `1 µl` is not in `11 µl`,
+    `9:30` not in `19:30`. A value with a decimal point may run on into more digits — `4.38`
+    is in `4.383`, the same number more precisely — one without may not (`45` is not `450`)."""
+    pattern = re.escape(value)
+    if value[:1].isdigit():
+        pattern = r"(?<![\d.])" + pattern
+    if value[-1:].isdigit():
+        pattern += r"(?!\.?\d)" if "." not in value else r"(?!\.\d)"
+    return re.compile(pattern)
 
 
 @dataclass(frozen=True)
@@ -100,8 +112,9 @@ def _stub_texts() -> tuple:
 
 
 def _norm(text) -> str:
-    """Lower-case with thousands separators dropped, so `13,413` matches `13413`."""
-    return str(text or "").lower().replace(",", "")
+    """Lower-case with thousands separators dropped, so `13,413` matches `13413`, and the Greek
+    mu read as the micro sign, so `5 μl` matches `5 µl`."""
+    return str(text or "").lower().replace(",", "").replace("μ", "µ")
 
 
 def _gated(name: str) -> bool:

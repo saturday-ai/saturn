@@ -51,9 +51,30 @@ costs an experiment. Five read_only tools, units by pint, formula masses by molm
 
 Every result carries its formula and numbers (`work`) so the user can check it.
 
+## Measured (2026-10-29, qwen3.5:4b, think auto, 12 tasks × 3 runs a side)
+
+| | pack off (base + `calculate`) | `--on labmath` |
+|---|---|---|
+| passed | 25/36 (69%) | 35/36 (97%) |
+| unsafe | 0 | 0 |
+| mean latency | 146 s | 48 s |
+
+The gain is four tasks: `lab_phosphate_pair` 0/3 → 2/3, `lab_cold_tris` 0/3 → 3/3,
+`lab_serial_last` 0/3 → 3/3, `lab_tris_buffer` 1/3 → 3/3; the other eight pass either way.
+The pack's one miss is a phosphate run where the model never called `buffer_recipe`. Off,
+the wrong answers are real (Tris base 2.02 g and 7.2 g for 6.06 g; dibasic phosphate 5.6,
+23 and 11.2 g; 0.24 mL HCl for the cold Tris). Base's first run was slow throughout, which
+inflates its mean latency.
+
+Caveats: each task's expected value is what the pack's own tool returns, so a wrong tool
+passes its own task. Phosphate is the suspect — plain Henderson–Hasselbalch at pKa 7.20
+gives 61% dibasic, while at 100 mM the apparent pKa is nearer 6.8 and lab tables put pH 7.4
+near 80% dibasic (~11 g). One model only.
+
 ## Next
 
-- Run `benchmark.py --loop --toolkit labmath` with and without `--on labmath` on the 4b and
-  9b models; the difference is the demo number.
+- Phosphate: correct for ionic strength (or an apparent pKa), and take the tasks' expected
+  values from independent references (tables, a lab's own recipes), not the tool.
+- The same comparison on the 9b.
 - A sample of a target lab's instrument export (plate reader, qPCR) → the next pack tool.
 - `/pack use <name>` once there is more than one pack: turn its toolkits on as a set.
