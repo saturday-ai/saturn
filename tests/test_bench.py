@@ -231,7 +231,8 @@ def test_every_task_is_well_formed():
 
     ids = [t.id for t in TASKS]
     assert len(set(ids)) == len(ids)
-    assert len(TASKS) <= 60, "adding a task? name the failure no existing task catches, and cut one"
+    base = [t for t in TASKS if not (t.toolkit in TOOLKITS and TOOLKITS[t.toolkit].pack)]
+    assert len(base) <= 60, "adding a task? name the failure no existing task catches, and cut one"
     per = {k: sum(1 for t in TASKS if t.toolkit == k) for k in {t.toolkit for t in TASKS}}
     assert max(per.values()) <= 12, per
     for t in TASKS:
@@ -745,6 +746,24 @@ def test_a_digits_fact_with_no_digits_matches_nothing():
 
     t = _task(Fact(["abc"], digits=True))
     assert not grade(t, _entry(response="It is 42."), Path("."))["correct"]
+
+
+@pytest.mark.parametrize("value, text, found", [
+    ("1 µl", "You need 11 µL of stock.", False),     # a wrong number that contains the right one
+    ("1 µl", "You need 1 μL of stock.", True),       # Greek mu for the micro sign
+    ("9:30", "It starts at 19:30.", False),
+    ("45", "It is 450.", False),
+    ("45", "It is 45.", True),                       # a full stop is not a decimal point
+    ("45", "It is 45.2.", False),
+    ("4.38", "Weigh 4.383 g.", True),                # the same number, more precisely
+    ("4.38", "Weigh 14.38 g.", False),
+    ("249.68", "It is 249.68.", True),
+    ("13413", "It is 13,413.", True),
+])
+def test_a_fact_value_is_not_found_inside_a_longer_number(value, text, found):
+    from bench.expect import Fact
+
+    assert (Fact([value]).found_in(text) is not None) is found
 
 
 def test_the_run_prints_no_live_escape_from_a_models_arguments(isolated_paths, capsys):

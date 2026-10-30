@@ -102,26 +102,33 @@ def _reader_sentence(off: frozenset) -> str:
     return f"The user's own {listed} {verb} from the matching reader tools. "
 
 
-def agent_sys_text(off: frozenset = frozenset()) -> str:
+def agent_sys_text(off: frozenset = frozenset(), packs: frozenset = frozenset()) -> str:
     """The agent's system prompt with the toolkits in `off` turned off: their sentences cut,
-    and one line that says what is off and how to turn it on. A pure function of `off`, so
-    the cached prefix moves only when the user flips a toolkit."""
-    if not off:
-        return _AGENT_SYS
+    and one line that says what is off and how to turn it on; then one line per pack toolkit
+    in `packs` (on), its own `prompt`. A pack toolkit is off by default, so it is never named
+    in the off line. A pure function of both, so the cached prefix moves only when the user
+    flips a toolkit."""
     from tools.toolspec import TOOLKITS
 
-    text = _AGENT_SYS.replace(_reader_sentence(frozenset()), _reader_sentence(off), 1)
-    for kit, sentence, instead in _TOOLKIT_SENTENCES:
-        if kit in off:
-            text = text.replace(sentence, instead, 1)
-    keys = ", ".join(k for k in TOOLKITS if k in off)
-    return text.replace("\n\nRules:", "\n" + _OFF_LINE.format(keys=keys) + "\n\nRules:", 1)
+    off = frozenset(k for k in off if not (k in TOOLKITS and TOOLKITS[k].pack))
+    lines = [TOOLKITS[k].prompt for k in TOOLKITS if k in packs and TOOLKITS[k].prompt]
+    if not off and not lines:
+        return _AGENT_SYS
+    text = _AGENT_SYS
+    if off:
+        text = text.replace(_reader_sentence(frozenset()), _reader_sentence(off), 1)
+        for kit, sentence, instead in _TOOLKIT_SENTENCES:
+            if kit in off:
+                text = text.replace(sentence, instead, 1)
+        lines.append(_OFF_LINE.format(keys=", ".join(k for k in TOOLKITS if k in off)))
+    return text.replace("\n\nRules:", "".join("\n" + ln for ln in lines) + "\n\nRules:", 1)
 
 
 def agent_sys_msg() -> SystemMessage:
     from tools import registry
 
-    return SystemMessage(content=agent_sys_text(frozenset(registry.off_toolkits())))
+    return SystemMessage(content=agent_sys_text(frozenset(registry.off_toolkits()),
+                                                frozenset(registry.packs_on())))
 
 
 # ── background prompts (the out-of-loop LLM calls) ────────────────────────────────────────────

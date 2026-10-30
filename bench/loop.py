@@ -44,10 +44,14 @@ def select(tasks: list, spec: "str | None") -> list:
 def skipped_for(task) -> "str | None":
     """The toolkit, turned off by the user (or --off), that this task cannot run without:
     its own, the one its Gate call is in, or the one every tool its Fact needs is in. A
-    task's OWN forced setup is not the user's choice and never skips it."""
+    task's OWN forced setup is not the user's choice and never skips it. A pack's task never
+    skips: with its toolkit off it runs on base Saturn — the baseline (`--on` measures the
+    pack, `--compare` the two)."""
     from tools import registry
     from tools.toolspec import toolkit_of
 
+    if registry.is_pack(task.toolkit):
+        return None
     if task.toolkit != HARNESS and not registry.toolkit_on(task.toolkit):
         return task.toolkit
     expect = task.expect

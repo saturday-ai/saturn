@@ -36,12 +36,16 @@ RISK_TIERS = ("read_only", "side_effecting", "destructive")
 @dataclass(frozen=True)
 class Toolkit:
     """A group of tools the user turns on or off as one (/tools). `core` cannot be turned off;
-    `managed_by` names the command that owns a toolkit /tools only lists (an MCP server)."""
+    `managed_by` names the command that owns a toolkit /tools only lists (an MCP server).
+    `pack` names the pack (packs/) a toolkit comes from: a pack toolkit is OFF unless the
+    config turns it on, and while on, its `prompt` line joins the agent's system prompt."""
 
     label: str
     about: str
     core: bool = False
     managed_by: str = ""
+    pack: str = ""
+    prompt: str = ""
 
 
 # THE toolkits, in the order /tools lists them. The key is what the user types. A toolkit is an

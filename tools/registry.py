@@ -42,6 +42,13 @@ import tools.skills  # noqa: E402,F401  (create_skill — saves one of the user'
 # raised, so a bad server entry can't take the app down.
 from tools import mcp_client  # noqa: E402
 
+# Packs (packs/): the swappable domain blocks on top of base Saturn — each adds its own
+# toolkits, off until the config turns them on. After the local tools (a pack can never take a
+# base tool's name), before MCP and the risk overrides (a saved override on a pack tool applies).
+import packs  # noqa: E402
+
+packs.load()
+
 mcp_client.startup()
 
 # --- collected views (established public names) ---------------------------------------------
@@ -102,13 +109,28 @@ def _switchable(key: str) -> bool:
 
 def toolkit_on(key: str) -> bool:
     """Whether a toolkit's tools are bound. Only an explicit `false` on a switchable toolkit
-    turns one off — the core, a toolkit another command manages, and any other value are on."""
+    turns one off — the core, a toolkit another command manages, and any other value are on.
+    A pack's toolkit is the other way round: only an explicit `true` turns it on."""
+    if is_pack(key):
+        return _toolkit_block().get(key) is True
     return not (_switchable(key) and _toolkit_block().get(key) is False)
 
 
+def is_pack(key: str) -> bool:
+    """A toolkit a pack (packs/) added — off by default, its own line in the prompt."""
+    kit = TOOLKITS.get(key)
+    return kit is not None and bool(kit.pack)
+
+
+def packs_on() -> list[str]:
+    """The pack toolkits that are on, in the table's order."""
+    return [k for k in TOOLKITS if is_pack(k) and toolkit_on(k)]
+
+
 def off_toolkits() -> list[str]:
-    """The toolkits that are off, in the table's order."""
-    return [k for k in TOOLKITS if not toolkit_on(k)]
+    """The base toolkits that are off, in the table's order. A pack's toolkit is off until the
+    user turns it on, which is not a choice to report — packs_on() is its readout."""
+    return [k for k in TOOLKITS if not is_pack(k) and not toolkit_on(k)]
 
 
 def is_off(tool_name: str) -> bool:
@@ -162,7 +184,7 @@ def set_toolkits(keys, on: bool) -> list[str]:
 
 def toolkit_problems() -> list[str]:
     """What is wrong with `toolkits:` in the config, for the startup report. Every problem
-    fails toward ON — a typo never silently unbinds a tool."""
+    fails toward the default — a typo never silently unbinds a base tool, nor binds a pack's."""
     from config import get_config
 
     raw = get_config().get("toolkits")
@@ -182,7 +204,7 @@ def toolkit_problems() -> list[str]:
             problems.append(f"toolkits.{key} in config.yaml {why} — ignored")
         elif not isinstance(value, bool):
             problems.append(f"toolkits.{key} in config.yaml must be true or false, not "
-                            f"{value!r} — {key} is on")
+                            f"{value!r} — {key} is {'off' if is_pack(str(key)) else 'on'}")
     return problems
 
 
@@ -201,7 +223,12 @@ def toolkit_block() -> str:
         "toolkits:",
     ]
     lines += [f"  {key + ': true':<21} # {kit.about}"
-              for key, kit in TOOLKITS.items() if _switchable(key)]
+              for key, kit in TOOLKITS.items() if _switchable(key) and not kit.pack]
+    packed = [(key, kit) for key, kit in TOOLKITS.items() if kit.pack]
+    if packed:
+        lines += ["  # Packs (packs/): domain toolkits on top of base Saturn, off until `true`."]
+        lines += [f"  {key + ': false':<21} # {kit.pack} pack · {kit.about}"
+                  for key, kit in packed]
     return "\n".join(lines) + "\n"
 
 

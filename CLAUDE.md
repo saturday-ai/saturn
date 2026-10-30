@@ -371,6 +371,27 @@ grounding every turn, and an EMPTY `search_knowledge_base` query returns the lis
 (`core/tool_args._EMPTY_OK`). `tool_args._NEVER_THE_OTHER_TOOL` keeps the wrong-arguments
 redirect from pointing at either writer. `tests/test_corpus_tools.py`.
 
+### Packs (`packs/`)
+
+A pack is a swappable domain block on top of base Saturn — the same agent tailored to one
+kind of user (a bio or chem lab first), for proposing Saturn to a specific lab or company.
+`packs/<name>/__init__.py` declares `TOOLKITS` (each a `toolspec.Toolkit` with `pack=` and a
+one-line `prompt=`) and `MODULES` (its tool modules, registered with the same
+`@register_tool` as `tools/`); an optional `bench.py` `tasks()` adds loop-benchmark tasks.
+`packs.load()` runs from `tools/registry.py` after the base tools, before MCP. The base
+touches a pack only through those fields: a pack toolkit is OFF unless `toolkits.<key>` is
+exactly `true` (`registry.toolkit_on`/`is_pack`/`packs_on`); `off_toolkits()` lists base
+toolkits only; `core/messages.agent_sys_text(off, packs)` adds an on pack's `prompt` line
+before `Rules:` and never names a pack in the off line, so with every pack off the prompt is
+the literal. A pack's third-party imports are its pyproject extra (`saturn-agent[<name>]`,
+pulled by `dev`); missing, the pack does not load and says so in `app/startup.problems()`.
+A pack task never skips in the loop benchmark (`bench/loop.skipped_for`): off is the
+baseline, `--on <key>` the pack, `--compare` the gain — so every pack Fact accepts
+`calculate` too; the 60-task cap counts base tasks only. The first pack is `biochem`
+(`labmath`: `dilution`, `molar_solution`, `serial_dilution`, `buffer_recipe`,
+`molecular_weight` — pint units, molmass masses, all read_only). `tests/test_packs.py`.
+Spec: `docs/superpowers/specs/2026-10-29-packs-design.md`.
+
 ### Slash commands
 
 `commands/_framework.py` provides `@command(name, summary, aliases=, usage=, details=)`; one module owns

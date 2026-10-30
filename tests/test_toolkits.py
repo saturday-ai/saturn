@@ -8,6 +8,7 @@ import pytest
 CORE = {"plan", "ask_user", "remember", "recall", "calculate", "current_time"}
 SWITCHABLE = ["files", "web", "shell", "knowledge", "notes", "calendar", "mail", "contacts",
               "reminders", "messages", "shortcuts", "desktop", "notifications", "skills"]
+PACKS = ["labmath"]  # the packs' toolkits (packs/), off by default — tests/test_packs.py
 
 
 # ── the table and the tagging (tools/toolspec.py) ────────────────────────────────────────────
@@ -17,7 +18,7 @@ def test_the_table_is_core_first_then_the_switchable_toolkits():
     from tools import toolspec
 
     keys = [k for k in toolspec.TOOLKITS if not k.startswith("mcp:")]
-    assert keys == ["core"] + SWITCHABLE
+    assert keys == ["core"] + SWITCHABLE + PACKS
     assert toolspec.TOOLKITS["core"].core
     assert not any(toolspec.TOOLKITS[k].core for k in SWITCHABLE)
 
@@ -76,11 +77,18 @@ def rebinds(monkeypatch):
     return calls
 
 
-def test_every_toolkit_is_on_by_default():
+def _base(tools):
+    """The names of the tools not from a pack, in order."""
+    from tools import registry, toolspec
+
+    return [t.name for t in tools if not registry.is_pack(toolspec.toolkit_of(t.name))]
+
+
+def test_every_base_toolkit_is_on_by_default_and_every_packs_off():
     from tools import registry
 
-    assert registry.off_toolkits() == []
-    assert [t.name for t in registry.tool] == [t.name for t in registry.all_tools]
+    assert registry.off_toolkits() == [] and registry.packs_on() == []
+    assert [t.name for t in registry.tool] == _base(registry.all_tools)
 
 
 def test_off_unbinds_a_toolkits_tools_in_place(rebinds):
@@ -102,7 +110,7 @@ def test_on_restores_registration_order(rebinds):
     registry.set_toolkits(["files", "messages"], False)
     registry.set_toolkits(["messages", "files"], True)
 
-    assert [t.name for t in registry.tool] == [t.name for t in registry.all_tools]
+    assert [t.name for t in registry.tool] == _base(registry.all_tools)
 
 
 def test_a_toggle_rebinds_the_model_once_and_only_when_something_changed(rebinds):
@@ -449,7 +457,8 @@ def test_the_block_lists_every_switchable_toolkit_as_on():
 
     block = yaml.safe_load(registry.toolkit_block())
     assert list(block) == ["toolkits"]
-    assert list(block["toolkits"].items()) == [(k, True) for k in SWITCHABLE]
+    assert list(block["toolkits"].items()) == [(k, True) for k in SWITCHABLE] + [
+        (k, False) for k in PACKS]
 
 
 def test_the_template_carries_the_block_verbatim():
@@ -459,7 +468,8 @@ def test_the_template_carries_the_block_verbatim():
 
     template = (Path(__file__).resolve().parents[1] / "config.default.yaml").read_text("utf-8")
     assert registry.toolkit_block() in template
-    assert yaml.safe_load(template)["toolkits"] == {k: True for k in SWITCHABLE}
+    assert yaml.safe_load(template)["toolkits"] == {**{k: True for k in SWITCHABLE},
+                                                     **{k: False for k in PACKS}}
 
 
 def test_an_older_config_gains_the_block_by_append(config_file):
@@ -471,7 +481,7 @@ def test_an_older_config_gains_the_block_by_append(config_file):
     text = config_file.read_text("utf-8")
     assert text.startswith(OLD_CONFIG)                         # no existing line is touched
     data = yaml.safe_load(text)
-    assert data["toolkits"] == {k: True for k in SWITCHABLE}
+    assert data["toolkits"] == {**{k: True for k in SWITCHABLE}, **{k: False for k in PACKS}}
     assert data["mcp"] == {"toolkits": "nor this"} and data["runtime"] == {"think": "auto"}
 
 
@@ -556,7 +566,8 @@ def test_bare_tools_is_the_toolkit_readout_and_never_a_flip(tools_cmd, config_fi
     assert _row(out, "core")[1:4] == ["6", "always", "on"]
     assert _row(out, "mail")[1:3] == ["6", "on"]
     assert _row(out, "messages")[1:3] == ["3", "off"]
-    assert "47 tools" in out and "44 bound" in out and "1 toolkit off" in out
+    assert "52 tools" in out and "44 bound" in out and "1 toolkit off" in out
+    assert _row(out, "labmath")[1:3] == ["5", "off"]
     assert registry.off_toolkits() == ["messages"] and tools_cmd.primes == []
     assert config_file.read_text("utf-8") == OLD_CONFIG
 
@@ -577,9 +588,10 @@ def test_off_unbinds_saves_and_primes(tools_cmd, config_file):
 
     assert registry.off_toolkits() == ["mail", "messages"]
     saved = yaml.safe_load(config_file.read_text("utf-8"))["toolkits"]
-    assert saved == {k: k not in ("mail", "messages") for k in SWITCHABLE}
+    assert saved == {**{k: k not in ("mail", "messages") for k in SWITCHABLE},
+                     **{k: False for k in PACKS}}
     assert config_file.read_text("utf-8").startswith(OLD_CONFIG)
-    assert "messages off" in out and "mail off" in out and "38 of 47" in out
+    assert "messages off" in out and "mail off" in out and "38 of 52" in out
     assert "next request" in out
     assert tools_cmd.primes == [1]
 
@@ -592,7 +604,7 @@ def test_on_binds_again_and_saves(tools_cmd, config_file):
 
     assert registry.off_toolkits() == []
     assert yaml.safe_load(config_file.read_text("utf-8"))["toolkits"]["messages"] is True
-    assert "messages on" in out and "47 of 47" in out
+    assert "messages on" in out and "47 of 52" in out
 
 
 def test_session_only_leaves_the_file_alone(tools_cmd, config_file):
@@ -656,7 +668,7 @@ def test_all_is_the_flat_list_with_each_tools_toolkit(tools_cmd):
     assert _row(out, "read_mail")[1:3] == ["mail", "read_only"]
     assert _row(out, "run_shell")[1:4] == ["shell", "off", "destructive"]
     kits = [r[1] for r in rows]                       # grouped: the table's order, core first
-    assert kits == sorted(kits, key=(["core"] + SWITCHABLE).index)
+    assert kits == sorted(kits, key=(["core"] + SWITCHABLE + PACKS).index)
 
 
 def test_help_explains_and_does_not_run(tools_cmd, config_file):

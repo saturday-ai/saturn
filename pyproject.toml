@@ -62,8 +62,11 @@ dependencies = [
 # (The `cloud` extra left with the 2026-07-03 cloud-model shelve: core/llms refuses any
 # non-ollama binding, so the packages could never be exercised — restore the extra alongside
 # the documented reintroduction seam in core/llms.py when cloud support returns.)
-# Dev-only: the unit test suite (tests/).
-dev = ["pytest>=8.0"]
+# Packs (packs/): one extra per pack, its tool modules' imports. A pack whose extra is not
+# installed does not load and says so at startup; base Saturn needs none of them.
+biochem = ["pint>=0.24", "molmass>=2024.10"]
+# Dev-only: the unit test suite (tests/) — every pack too, so CI tests them.
+dev = ["pytest>=8.0", "saturn-agent[biochem]"]
 
 [project.urls]
 Homepage = "https://github.com/logansundaram/saturn"
@@ -78,7 +81,7 @@ saturn = "agent:main"
 py-modules = ["agent", "config", "diag", "env_keys", "textutil"]
 
 [tool.setuptools.packages.find]
-include = ["app*", "commands*", "core*", "trust*", "tools*", "nodes*", "stores*", "tui*", "notify*"]
+include = ["app*", "commands*", "core*", "trust*", "tools*", "nodes*", "stores*", "tui*", "notify*", "packs*"]
 namespaces = true
 
 [tool.setuptools.data-files]
